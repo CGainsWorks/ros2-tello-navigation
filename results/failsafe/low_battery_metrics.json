@@ -1,0 +1,108 @@
+{
+  "fixes": {
+    "acceptance": 0.9920634920634921,
+    "fix_range_m_max": 3.5039291135751998,
+    "fix_range_m_median": 3.05889280279933,
+    "fix_rate_hz": 16.258064516129288,
+    "fixes": 126,
+    "fixes_accepted": 125,
+    "mean_markers_per_fix": 2.7301587301587302,
+    "reprojection_rmse_px_median": 1.0670494478699493,
+    "reprojection_rmse_px_p95": 1.6383475560299
+  },
+  "ground_truth": "simulator",
+  "localisation": {
+    "availability": 1.0,
+    "longest_gap_s": 0.0,
+    "samples": 155
+  },
+  "metadata": {
+    "aircraft_config": "src/tello_bringup/config/aircraft.yaml",
+    "battery_drain_multiplier": 8.0,
+    "camera_size": [
+      960,
+      720
+    ],
+    "camera_source": "nominal-fov",
+    "control_rate_hz": 20.0,
+    "detect_every": 1,
+    "detector_backend": "aruco",
+    "detector_fallback_frames": 143,
+    "fault_schedule": "nominal",
+    "final_cause": "LOW_BATTERY",
+    "final_state": "LANDED",
+    "frames_rendered": 156,
+    "fusion": {
+      "fixes_accepted": 125,
+      "fixes_rejected": 1,
+      "fixes_stale": 0,
+      "predictions": 73,
+      "resets": 0,
+      "vo_accepted": 155,
+      "vo_rejected": 0
+    },
+    "gains_file": "src/tello_bringup/config/control.yaml",
+    "loops": 1,
+    "marker_count": 18,
+    "marker_map": "maps/marker_map.yaml",
+    "mission": "perimeter",
+    "mission_file": "missions/perimeter.yaml",
+    "preflight_seconds": 0.05,
+    "seed": 1,
+    "start_battery": 0.3,
+    "start_pose": [
+      1.0,
+      0.9,
+      24.999999999999996
+    ],
+    "survey_accuracy_m": 0.005,
+    "survey_method": "designed",
+    "unknown_payloads": {},
+    "vo_enabled": true,
+    "wall_seconds": 41.8,
+    "waypoints": 5,
+    "waypoints_reached": 0
+  },
+  "reprojection": {
+    "max_px": 1.9868160287523347,
+    "median_px": 1.0670494478699493,
+    "p95_px": 1.6383475560299,
+    "samples": 126
+  },
+  "residuals": {
+    "reprojection_px_max": 1.9868160287523347,
+    "reprojection_px_mean": 0.9828862388681174,
+    "reprojection_px_median": 1.0681854752516518,
+    "reprojection_px_p95": 1.6389411828002485,
+    "reprojection_px_rmse": 1.0982169299929905,
+    "residual_samples": 125
+  },
+  "trajectory_error": {
+    "axis_rmse_m": [
+      0.023660234211526552,
+      0.030492365625566363,
+      0.047724295303846885
+    ],
+    "consistency_ratio": 1.4592825304600827,
+    "position_max_m": 0.13979333155035914,
+    "position_mean_m": 0.05210221394538473,
+    "position_median_m": 0.04466729218745865,
+    "position_p95_m": 0.10879154347842242,
+    "position_rmse_m": 0.061377515481129526,
+    "samples": 155,
+    "yaw_max_deg": 2.1159641232949307,
+    "yaw_mean_deg": 0.5319069229897666,
+    "yaw_median_deg": 0.33439430436488526,
+    "yaw_p95_deg": 1.475332171915013,
+    "yaw_rmse_deg": 0.7261618929956336
+  },
+  "waypoints": {
+    "arrival_error_max": NaN,
+    "arrival_error_mean": NaN,
+    "arrival_error_median": NaN,
+    "arrival_error_p95": NaN,
+    "arrival_error_rmse": NaN,
+    "waypoints_reached": 0,
+    "waypoints_timed_out": 0
+  }
+}

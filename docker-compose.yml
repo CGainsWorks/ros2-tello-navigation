@@ -1,0 +1,56 @@
+# `docker compose up` flies the reference mission and writes the results onto the
+# host, which is the one-command path the README leads with.
+#
+# The bind mounts are the point. Without them the flight logs and the figures
+# exist only inside a container that is about to be removed and the demo prints
+# numbers nobody can look at afterwards.
+
+services:
+  demo:
+    build: .
+    image: tello-navigation:latest
+    container_name: tello-navigation-demo
+    # Flies missions/perimeter.yaml, writes results/latest/, regenerates the
+    # figures. Override with `docker compose run demo <command>`.
+    command: ["bash", "scripts/run_demo.sh"]
+    volumes:
+      - ./results:/app/results
+      - ./analysis/figures:/app/analysis/figures
+    environment:
+      - PYTHONPATH=/app/src/tello_core
+      # matplotlib has no display in a container and picks an interactive backend
+      # by default, which fails on import rather than on use.
+      - MPLBACKEND=Agg
+    # The renderer is the expensive part and it is single-threaded numpy. Capping
+    # this keeps a demo from taking over a laptop; raise it if you want the full
+    # mission to finish sooner.
+    cpus: "2.0"
+    mem_limit: 2g
+
+  # The test suite, for anyone who wants to check the repository without
+  # installing Python packages on their own machine.
+  #   docker compose run --rm test
+  test:
+    build: .
+    image: tello-navigation:latest
+    command: ["python", "-m", "pytest", "-q"]
+    environment:
+      - PYTHONPATH=/app/src/tello_core
+      - MPLBACKEND=Agg
+    profiles: ["tools"]
+
+  # An interactive shell in the same environment.
+  #   docker compose run --rm shell
+  shell:
+    build: .
+    image: tello-navigation:latest
+    command: ["bash"]
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./results:/app/results
+      - ./analysis/figures:/app/analysis/figures
+    environment:
+      - PYTHONPATH=/app/src/tello_core
+      - MPLBACKEND=Agg
+    profiles: ["tools"]

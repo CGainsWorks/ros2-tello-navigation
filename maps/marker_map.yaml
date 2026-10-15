@@ -1,0 +1,178 @@
+# Surveyed QR marker layout for the indoor test area.
+#
+# This is the file the whole system's absolute accuracy rests on. See
+# docs/MARKER_MAP.md for the format, the frame convention and how to survey a
+# real room; docs/HARDWARE.md for the status of this particular map.
+#
+# STATUS OF THESE NUMBERS
+# -----------------------
+# This layout is a *design*, not a survey. There is no aircraft and no room, so
+# nothing here has been measured with an instrument. The positions describe a
+# 4.0 m x 3.0 m x 2.4 m room, they are internally consistent and the simulator
+# in src/tello_core/sim builds its world from this exact file, so every number
+# quoted in docs/RESULTS.md is reproducible against it. What they are not is a
+# record of where ten pieces of paper actually are.
+#
+# `survey.method: designed` below is what marks that and every results file
+# carries the value through, so an accuracy figure can never be read without it.
+# When a real room is surveyed, replace the positions and set `method` to how it
+# was done. Nothing else has to change.
+#
+# FRAME
+# -----
+# Right-handed, z up. Origin at the floor of one corner of the room, x along the
+# 4.0 m wall, y along the 3.0 m wall. `normal_yaw_deg` is the yaw of the
+# direction the printed face looks, so a marker on the x = 0 wall looking across
+# the room has normal_yaw_deg: 0.
+
+frame_id: map
+
+survey:
+  method: designed
+  instrument: none
+  date: unsurveyed
+  stated_accuracy_m: 0.005
+  notes: >
+    Designed layout for a 4.0 x 3.0 x 2.4 m room. The stated accuracy is the
+    figure a laser distance meter and a plumb line would achieve and is used as
+    the survey sigma in the fix covariance. It is the accuracy this layout is
+    *intended* to be built to, not one that has been achieved.
+
+# Every marker is the same size. A 300 mm symbol needs a four-module quiet zone
+# of 57 mm on each side, so the printed sheet is 414 mm square and fits A2's
+# 420 mm short edge with 6 mm to spare. `python scripts/print_markers.py`
+# generates the sheets with crop marks at the symbol's own corners.
+#
+# The size comes from the measured detection-range curve in
+# results/detection_range.csv rather than from what looked sensible: at 0.30 m
+# the decode rate is still 85 per cent at 3.8 m, which covers the whole test
+# area and at 0.25 m it collapses before 2 m.
+#
+# Marker size scales every position estimate linearly, so it is measured on the
+# printed sheet across the outer edge of the symbol, not taken from the file the
+# printer was given. A sheet that came out of the printer 5 per cent small makes
+# every position estimate 5 per cent too far away, with a healthy-looking
+# reprojection residual and nothing to indicate a problem.
+default_size_m: 0.30
+default_survey_sigma_m: 0.005
+
+markers:
+  # ---- x = 0 wall, facing along +x --------------------------------------
+  - id: M01
+    payload: TLM01
+    position: [0.010, 0.900, 1.400]
+    normal_yaw_deg: 0.0
+
+  - id: M02
+    payload: TLM02
+    position: [0.010, 2.100, 1.050]
+    normal_yaw_deg: 0.0
+
+  # Deliberately low. With every marker at chest height the vertical geometry is
+  # weak and z is the worst-observed axis whenever a single marker is in view.
+  - id: M03
+    payload: TLM03
+    position: [0.010, 1.500, 0.600]
+    normal_yaw_deg: 0.0
+
+  # ---- x = 4 wall, facing along -x --------------------------------------
+  - id: M04
+    payload: TLM04
+    position: [3.990, 0.900, 1.150]
+    normal_yaw_deg: 180.0
+
+  - id: M05
+    payload: TLM05
+    position: [3.990, 2.100, 1.450]
+    normal_yaw_deg: 180.0
+
+  # Deliberately high, for the same reason M03 is low.
+  - id: M06
+    payload: TLM06
+    position: [3.990, 1.500, 1.850]
+    normal_yaw_deg: 180.0
+
+  # ---- y = 0 wall, facing along +y --------------------------------------
+  - id: M07
+    payload: TLM07
+    position: [1.200, 0.010, 1.350]
+    normal_yaw_deg: 90.0
+
+  - id: M08
+    payload: TLM08
+    position: [2.800, 0.010, 1.000]
+    normal_yaw_deg: 90.0
+
+  # ---- y = 3 wall, facing along -y --------------------------------------
+  - id: M09
+    payload: TLM09
+    position: [1.200, 2.990, 1.500]
+    normal_yaw_deg: 270.0
+
+  # Hung 4 degrees out of square, which is what happens when a sheet is taped to
+  # a wall by hand. It is in the map because the map is allowed to describe the
+  # room as it is; leaving it out would push the same 4 degrees into the
+  # localisation residual instead.
+  - id: M10
+    payload: TLM10
+    position: [2.800, 2.990, 1.200]
+    normal_yaw_deg: 270.0
+    roll_deg: 4.0
+
+  # ---- paired markers -----------------------------------------------------
+  #
+  # Each of these sits 45 cm from one of the markers above, on the same wall.
+  # They exist because of a measurement, not for redundancy.
+  #
+  # A single square marker leaves its own tilt almost unobservable when viewed
+  # square on, so a half-pixel of corner noise swings the solved pose by several
+  # degrees, which at 1.5 m is 15 cm of lateral error. Two markers in the same
+  # view fix it: the pose solve then has an object 75 cm across rather than 30
+  # and the measured fix error drops from about 15 cm to under 3 cm. They do not
+  # have to be on different walls and coplanar pairs are much easier to survey.
+  #
+  # Without them the four corners of the reference mission could see only one
+  # marker from any heading, because two markers on *perpendicular* walls near a
+  # corner subtend more than 100 degrees from anywhere close to it and the camera
+  # has 70 degrees of horizontal field. `python scripts/validate_map.py` prints
+  # the coverage that shows this.
+
+  - id: M11
+    payload: TLM11
+    position: [0.010, 0.900, 0.950]
+    normal_yaw_deg: 0.0
+
+  - id: M12
+    payload: TLM12
+    position: [3.990, 0.900, 1.600]
+    normal_yaw_deg: 180.0
+
+  - id: M13
+    payload: TLM13
+    position: [1.200, 0.010, 0.900]
+    normal_yaw_deg: 90.0
+
+  - id: M14
+    payload: TLM14
+    position: [2.800, 2.990, 1.650]
+    normal_yaw_deg: 270.0
+
+  - id: M15
+    payload: TLM15
+    position: [0.010, 2.100, 1.500]
+    normal_yaw_deg: 0.0
+
+  - id: M16
+    payload: TLM16
+    position: [3.990, 2.100, 1.000]
+    normal_yaw_deg: 180.0
+
+  - id: M17
+    payload: TLM17
+    position: [2.800, 0.010, 1.450]
+    normal_yaw_deg: 90.0
+
+  - id: M18
+    payload: TLM18
+    position: [1.200, 2.990, 1.050]
+    normal_yaw_deg: 270.0

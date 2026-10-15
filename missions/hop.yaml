@@ -1,0 +1,24 @@
+# A short mission, for checking a change without waiting for the full flight.
+#
+# Two waypoints two metres apart, both with a marker pair in view, so the whole
+# thing takes about twenty seconds of simulated flight. It is what `make quick`
+# and the CI smoke test fly; the numbers in docs/RESULTS.md come from
+# missions/perimeter.yaml, not from this.
+
+name: hop
+description: >
+  Two waypoints and a landing. A smoke test, not a result.
+
+takeoff_height_m: 1.10
+loops: 1
+
+default_tolerance_m: 0.20
+default_dwell_s: 0.8
+default_timeout_s: 20.0
+
+waypoints:
+  - name: start
+    position: [1.00, 0.90, 1.20]
+
+  - name: across
+    position: [3.00, 0.90, 1.20]

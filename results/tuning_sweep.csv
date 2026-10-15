@@ -1,0 +1,16 @@
+waypoints,waypoints_reached,final_state,final_cause,position_rmse_m,position_p95_m,arrival_error_rmse_m,availability,consistency,parameter,value,nominal
+2,2,LANDED,NONE,0.1109,0.2417,0.0561,0.983,2.012,horizontal_tau,0.2,0.35
+2,2,LANDED,NONE,0.073,0.1382,0.0554,0.9755,1.462,horizontal_tau,0.28,0.35
+2,2,LANDED,NONE,0.0959,0.2026,0.0514,0.9751,1.787,horizontal_tau,0.35,0.35
+2,2,LANDED,NONE,0.064,0.1126,0.0541,0.971,1.372,horizontal_tau,0.45,0.35
+2,2,LANDED,NONE,0.0879,0.1963,0.0724,0.9755,1.504,horizontal_tau,0.6,0.35
+2,2,LANDED,NONE,0.1066,0.2096,0.0747,0.971,1.992,vertical_tau,0.25,0.45
+2,2,LANDED,NONE,0.0977,0.1955,0.0478,0.9751,1.8,vertical_tau,0.35,0.45
+2,2,LANDED,NONE,0.0959,0.2026,0.0514,0.9751,1.787,vertical_tau,0.45,0.45
+2,2,LANDED,NONE,0.0975,0.179,0.145,0.9799,2.02,vertical_tau,0.6,0.45
+2,2,LANDED,NONE,0.0633,0.1498,0.138,1.0,1.185,vertical_tau,0.8,0.45
+2,2,LANDED,NONE,0.0988,0.2117,0.0833,0.9799,1.713,drift_sigma,0.0,0.05
+2,2,LANDED,NONE,0.0843,0.1607,0.0632,0.9834,1.764,drift_sigma,0.025,0.05
+2,2,LANDED,NONE,0.0959,0.2026,0.0514,0.9751,1.787,drift_sigma,0.05,0.05
+2,2,LANDED,NONE,0.0981,0.1858,0.1018,0.9793,2.023,drift_sigma,0.1,0.05
+2,2,LANDED,NONE,0.1023,0.1939,0.0982,0.9888,2.079,drift_sigma,0.2,0.05

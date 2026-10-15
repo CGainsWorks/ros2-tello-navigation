@@ -1,0 +1,27 @@
+# Everything the offline half of this repository needs: the simulator, the QR
+# and visual-odometry front ends, the fusion filter, the controller, the test
+# suite and the analysis scripts. No ROS 2 installation is required for any of
+# it, which is what lets CI run the real algorithms in seconds.
+#
+# Deliberately unpinned to a single version. The numbers in docs/RESULTS.md
+# reproduce identically on numpy 1.26 / OpenCV 4.11 (Windows, Python 3.9) and
+# on numpy 2.x / OpenCV 4.10 (Ubuntu, Python 3.11), because every stochastic
+# element takes an explicit seed. Pinning would hide it if that stopped being
+# true.
+numpy>=1.21
+scipy>=1.8
+pyyaml>=5.4
+
+# QR detection and decoding, the pinhole camera model, solvePnP and the
+# Lucas-Kanade tracker all come from OpenCV. `opencv-python-headless` rather
+# than `opencv-python` because nothing here opens a GUI window and the headless
+# wheel does not drag in a GTK stack on a CI runner.
+opencv-python-headless>=4.7
+
+# Figures and the trajectory-error tables.
+matplotlib>=3.5
+pandas>=1.3
+
+# Test and lint.
+pytest>=7.0
+ruff>=0.5

@@ -1,0 +1,53 @@
+# Lint configuration.
+#
+# Line length 100 rather than the default 88. This is numerical code and the
+# alternative to a slightly longer line is usually a worse-named variable or an
+# expression broken across three lines in a place that hides its structure.
+
+line-length = 100
+target-version = "py39"
+
+exclude = [
+    ".git",
+    "__pycache__",
+    "results",
+]
+
+[lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    # Ambiguous variable names. The geometry code uses `l` for a length and `I`
+    # for an information matrix because that is what the equations use.
+    "E741",
+]
+
+# pyupgrade ("UP") is deliberately not selected. It rewrites `Optional[float]`
+# to `float | None`, which is correct on the Python 3.10 that ROS 2 Humble ships
+# and wrong on the Python 3.9 half of this repository's development, in any
+# annotation that is evaluated at runtime rather than deferred.
+
+[lint.per-file-ignores]
+# Notebooks are written in notebook style: imports appear where the narrative
+# introduces them.
+"*.ipynb" = ["E402", "E702", "E703"]
+
+# Entry-point scripts extend sys.path before importing the packages, since they
+# are run directly rather than installed.
+"scripts/*.py" = ["E402"]
+
+# make_results.py is a document template: most of it is f-strings that emit
+# Markdown table rows. The line length of the Python source says nothing about
+# the readability of either the script or its output and wrapping a table row
+# would break the table.
+"scripts/make_results.py" = ["E402", "E501"]
+"analysis/*.py" = ["E402"]
+
+# The ROS 2 node packages put the sibling `tello_core` source directory on
+# sys.path before importing from it, so that a colcon build and a bare pytest run
+# see the same source with no copy step. That has to happen before the imports.
+"src/tello_localisation/**" = ["E402"]
+"src/tello_control/**" = ["E402"]
+"src/tello_driver/**" = ["E402"]
+
+[lint.isort]
+known-first-party = ["tello_core", "tello_localisation", "tello_control", "tello_bringup"]

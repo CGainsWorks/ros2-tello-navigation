@@ -1,0 +1,3 @@
+time_s,from_state,to_state,cause,detail
+0.05,IDLE,TAKEOFF,NONE,commanded
+0.05,TAKEOFF,LANDED,LOW_BATTERY,"refused to take off: battery 20 per cent, already below the 25 per cent return threshold"

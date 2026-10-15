@@ -1,0 +1,47 @@
+{
+  "aircraft_config": "src/tello_bringup/config/aircraft.yaml",
+  "battery_drain_multiplier": 1.0,
+  "camera_size": [
+    960,
+    720
+  ],
+  "camera_source": "nominal-fov",
+  "control_rate_hz": 20.0,
+  "detect_every": 1,
+  "detector_backend": "aruco",
+  "detector_fallback_frames": 237,
+  "fault_schedule": "nominal",
+  "final_cause": "NONE",
+  "final_state": "LANDED",
+  "frames_rendered": 512,
+  "fusion": {
+    "fixes_accepted": 180,
+    "fixes_rejected": 11,
+    "fixes_stale": 0,
+    "predictions": 247,
+    "resets": 1,
+    "vo_accepted": 510,
+    "vo_rejected": 1
+  },
+  "gains_file": "src/tello_bringup/config/control.yaml",
+  "loops": 1,
+  "marker_count": 18,
+  "marker_map": "maps/marker_map.yaml",
+  "mission": "perimeter",
+  "mission_file": "missions/perimeter.yaml",
+  "preflight_seconds": 0.05,
+  "seed": 1,
+  "start_battery": 1.0,
+  "start_pose": [
+    1.0,
+    0.9,
+    24.999999999999996
+  ],
+  "survey_accuracy_m": 0.005,
+  "survey_method": "designed",
+  "unknown_payloads": {},
+  "vo_enabled": true,
+  "wall_seconds": 84.3,
+  "waypoints": 5,
+  "waypoints_reached": 5
+}

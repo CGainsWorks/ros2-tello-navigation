@@ -1,0 +1,5 @@
+time_s,index,name,kind,position_error_m
+3.25,0,corner_sw,arrived,0.109
+8.0,1,corner_se,arrived,0.0285
+12.0,2,corner_ne,arrived,0.1017
+16.75,3,corner_nw,arrived,0.0419

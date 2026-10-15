@@ -1,0 +1,71 @@
+# Controller gains and limits.
+#
+# Read by tello_core.control.pid.ControlGains and by the ROS 2 mission node, so
+# there is one copy. The reasoning behind every number is in docs/PID_TUNING.md;
+# this file records what they are and the one thing about them that is easy to
+# get wrong.
+#
+# THESE GAINS ARE TUNED AGAINST A SIMULATED AIRCRAFT.
+# The plant they were tuned against is the first-order velocity model in
+# src/tello_core/sim/dynamics.py, whose time constants are estimates and not
+# measurements. They are a starting point for a real Tello, not a finished
+# tuning. docs/PID_TUNING.md includes a sensitivity sweep showing how much of the
+# behaviour survives a plausible range of plant time constants, which is the
+# honest way to say how much they can be trusted.
+
+gains:
+  # Horizontal position loop. Output is a world-frame velocity in m/s, which the
+  # controller rotates into the body frame and scales to stick counts.
+  #
+  # The integral term exists for one reason: the room has air currents and the
+  # airframe has trim errors and without it the aircraft settles a few
+  # centimetres downwind of every waypoint and stays there.
+  horizontal:
+    kp: 1.10
+    ki: 0.22
+    kd: 0.42
+    output_limit: 0.75      # m/s, below the aircraft's 1.0 m/s so there is stick left over
+    integral_limit: 0.30    # m/s of authority the integrator may claim
+    derivative_tau: 0.10    # s, filter on the derivative term
+    back_calculation: 1.0
+
+  # Vertical. Stiffer than horizontal because the sensor behind it is better: the
+  # downward time-of-flight sensor is good to about 3 cm, where horizontal
+  # position comes from markers alone.
+  vertical:
+    kp: 1.30
+    ki: 0.30
+    kd: 0.30
+    output_limit: 0.55      # m/s
+    integral_limit: 0.30
+    derivative_tau: 0.10
+    back_calculation: 1.0
+
+  # Heading. No integral term: yaw has no steady disturbance to reject and an
+  # integrator on an axis whose measurement occasionally jumps by a marker fix is
+  # a slow oscillation waiting to happen.
+  #
+  # The output limit is the important number in this file and it is not a control
+  # decision at all, it is a perception one.
+  #
+  # The camera's 1/60 s exposure turns a yaw rate into image blur of
+  # fx * omega * exposure pixels. results/detection_yaw_rate.csv is the measured
+  # curve at 1.5 m range, twenty samples per point:
+  #
+  #     0-35 deg/s   (0-7 px blur)   85 to 100 per cent detected
+  #     40 deg/s     (7.9 px)        35 per cent
+  #     50 deg/s     (9.9 px)        0 per cent
+  #
+  # The cliff is at eight pixels of blur and it is very steep. 30 deg/s sits at
+  # six pixels with a measured 85 per cent, which leaves margin for a marker that
+  # is further away or more oblique than the one that was measured. It costs
+  # about three seconds on a 90 degree turn, which is the price of being able to
+  # see during it: the first autonomous flight in this repository was allowed
+  # 90 deg/s, blinded itself on the first turn and landed nine seconds later
+  # with the failsafe correctly reporting lost localisation.
+  yaw:
+    kp: 1.60
+    ki: 0.0
+    kd: 0.18
+    output_limit_dps: 30.0
+    derivative_tau: 0.10

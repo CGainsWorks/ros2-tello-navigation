@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# ROS 2 / colcon
+install/
+log/
+
+# Generated flight artefacts. Everything under results/ that the repository
+# ships is committed deliberately and listed in results/README.md; the
+# directories below are transient and should not be.
+#
+# results/latest/ IS committed, and deliberately: it is the reference flight
+# every number in docs/RESULTS.md comes from, and `make demo` overwriting it is
+# how a change shows up as a diff.
+results/local/
+results/quick/
+results/ci/
+results/reproduce/
+datasets/
+*.mp4
+*.avi
+
+# OS
+.DS_Store
+Thumbs.db

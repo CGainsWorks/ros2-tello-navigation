@@ -1,0 +1,5 @@
+time_s,from_state,to_state,cause,detail
+0.05,IDLE,TAKEOFF,NONE,commanded
+0.65,TAKEOFF,RETURN,LOW_BATTERY,battery 25 per cent
+1.85,RETURN,EMERGENCY_LAND,CRITICAL_BATTERY,battery 15 per cent
+5.1,EMERGENCY_LAND,LANDED,CRITICAL_BATTERY,on the ground

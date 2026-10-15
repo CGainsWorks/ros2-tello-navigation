@@ -1,0 +1,56 @@
+# DJI Tello airframe configuration.
+#
+# Read by tello_core.config.AircraftConfig and by the ROS 2 nodes through their
+# parameter files, so there is one copy of every number.
+#
+# Provenance is marked on each block. "published" means it comes from DJI's Tello
+# SDK 2.0 documentation or the product specification; "unverified" means it is
+# derived from those and has never been checked against an aircraft, because this
+# project has no aircraft. See docs/HARDWARE.md.
+
+mass_kg: 0.080          # published, with battery
+max_tilt_deg: 20.0      # published
+telemetry_rate_hz: 10.0 # published, UDP 8890 state broadcast
+video_rate_hz: 30.0     # published, UDP 11111 H.264 at 960x720
+
+# Where the forward camera sits relative to the body origin, which is taken at
+# the centre of the airframe in the propeller plane.
+#
+# UNVERIFIED. Read off the published 98 x 92.5 x 41 mm dimensions, not measured.
+# A centimetre of error here is a centimetre of bias in every position estimate,
+# which is the same order as the entire error budget, so this is the first thing
+# to measure on a real aircraft.
+camera_mount:
+  x_m: 0.032
+  y_m: 0.0
+  z_m: -0.012
+  pitch_deg: 0.0
+  yaw_deg: 0.0
+  roll_deg: 0.0
+
+# Velocity per unit of rc stick, at the default speed setting.
+#
+# UNVERIFIED. The maxima are published; the linearity between zero and full
+# stick is assumed and is certainly not exact. An error here detunes the
+# controller proportionally rather than destabilising it, which makes it easy to
+# hide by retuning. docs/HARDWARE.md has the ten-minute procedure that solves
+# for it directly instead.
+rc_scaling:
+  horizontal_max_mps: 1.0
+  vertical_max_mps: 0.8
+  yaw_rate_max_dps: 100.0
+  deadband_counts: 3
+
+# See docs/FAILSAFE.md for how these thresholds were chosen.
+battery:
+  low_fraction: 0.25
+  critical_fraction: 0.15
+  reserve_seconds: 25.0
+
+# The volume the aircraft may occupy, metres in the map frame. Inset from the
+# 4.0 x 3.0 x 2.4 m room by more than the worst-case position error plus the
+# aircraft's own radius, so that a breach is caught before contact rather than
+# after it.
+geofence:
+  min_corner: [0.35, 0.35, 0.40]
+  max_corner: [3.65, 2.65, 1.90]

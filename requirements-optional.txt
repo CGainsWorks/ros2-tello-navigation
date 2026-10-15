@@ -1,0 +1,15 @@
+# Not needed to run anything in this repository. Listed so that the two
+# optional paths are reproducible for anyone who wants them.
+
+# Executing the analysis notebooks rather than reading the committed output.
+jupyter
+nbconvert
+ipykernel
+
+# Talking to a real DJI Tello. `djitellopy` is not used by any code path in
+# this repository: src/tello_core/link/udp.py speaks the Tello SDK 2.0 UDP
+# protocol directly, because the driver has to expose the raw state packet for
+# the fusion filter and djitellopy hides it. It is listed here only because it
+# is the fastest way to sanity-check that a drone is reachable before running
+# anything of ours against it.
+djitellopy

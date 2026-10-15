@@ -1,0 +1,53 @@
+# ROS 2 node parameters.
+#
+# Loaded by every node in both launch files. The values that describe the
+# aircraft, the markers or the controller are NOT here: those live in
+# aircraft.yaml, control.yaml and maps/marker_map.yaml and are read by the same
+# code the offline runner uses, so there is one copy of every number and the ROS
+# graph and `make demo` cannot be flying different configurations.
+#
+# What is here is how the nodes behave as nodes: rates, frames and timeouts.
+
+/**:
+  ros__parameters:
+    use_sim_time: false
+
+tello_driver:
+  ros__parameters:
+    # How often the driver drains the link. Above the 30 Hz video rate so a frame
+    # is never held waiting for a timer; the link itself returns None when there
+    # is nothing, so polling fast costs almost nothing.
+    poll_rate: 60.0
+    frame_id: camera
+    # Only used when link_type is "sim".
+    sim_seed: 1
+    sim_start: [1.0, 0.9, 0.03]
+
+tello_marker_localisation:
+  ros__parameters:
+    # Detect on one frame in N. One means every frame that arrives. This is the
+    # first thing to raise on a machine that cannot keep up and it costs
+    # localisation rate directly, so the value is recorded in the results
+    # metadata rather than left to be inferred.
+    detect_every: 1
+    publish_unknown_payloads: true
+
+tello_fusion:
+  ros__parameters:
+    publish_rate: 20.0
+    map_frame: map
+    body_frame: base_link
+    # Seconds without an accepted fix before `localised` goes false. The failsafe
+    # reads that flag and nothing else to decide whether localisation is lost.
+    fix_timeout: 2.0
+    # Metres. Above this the filter reports itself unlocalised even with a recent
+    # fix, because a fix that barely constrains anything is not the same as
+    # knowing where you are.
+    max_position_sigma: 0.45
+
+tello_mission:
+  ros__parameters:
+    control_rate: 20.0
+    # False, always, with an aircraft on the bench. True takes off as soon as the
+    # first estimate arrives.
+    auto_arm: false

@@ -1,0 +1,13 @@
+time_s,from_state,to_state,cause,detail
+0.05,IDLE,TAKEOFF,NONE,commanded
+1.45,TAKEOFF,NAVIGATE,NONE,airborne
+5.65,NAVIGATE,HOLD,LOCALISATION_LOST,no fix for 2.1 s
+5.85,HOLD,NAVIGATE,NONE,localisation reacquired
+8.95,NAVIGATE,HOLD,LOCALISATION_LOST,no fix for 2.1 s
+9.35,HOLD,NAVIGATE,NONE,localisation reacquired
+14.25,NAVIGATE,HOLD,LOCALISATION_LOST,no fix for 2.0 s
+14.5,HOLD,NAVIGATE,NONE,localisation reacquired
+19.25,NAVIGATE,HOLD,LOCALISATION_LOST,no fix for 2.0 s
+19.5,HOLD,NAVIGATE,NONE,localisation reacquired
+21.05,NAVIGATE,LAND,NONE,mission complete
+25.65,LAND,LANDED,NONE,on the ground

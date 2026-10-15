@@ -1,0 +1,46 @@
+# The reference mission. Every number quoted in docs/RESULTS.md comes from this
+# file flown against maps/marker_map.yaml.
+#
+# A rectangle inset from the walls, flown at a constant height, with the heading
+# left automatic at every waypoint. Automatic heading is the interesting part: the
+# planner picks the yaw that puts the most marker area in front of the camera, so
+# the aircraft turns to face a wall as it arrives rather than flying the rectangle
+# nose-first and staring into a corner. `make visibility` prints what it chose.
+#
+# The corners are 1.0 m and 3.0 m in x, 0.9 m and 2.1 m in y, which puts every one
+# of them between 0.9 m and 1.5 m from the nearest wall. That is inside the
+# measured detection range with a factor of two in hand, which is deliberate: the
+# margin is what absorbs motion blur during the turns.
+
+name: perimeter
+description: >
+  Four-corner rectangle at 1.2 m, automatic heading, one loop. The reference
+  mission for the position-accuracy result.
+
+takeoff_height_m: 1.10
+loops: 1
+
+default_tolerance_m: 0.20
+default_dwell_s: 1.0
+default_timeout_s: 30.0
+
+waypoints:
+  - name: corner_sw
+    position: [1.00, 0.90, 1.20]
+
+  - name: corner_se
+    position: [3.00, 0.90, 1.20]
+
+  - name: corner_ne
+    position: [3.00, 2.10, 1.20]
+
+  - name: corner_nw
+    position: [1.00, 2.10, 1.20]
+
+  # Back to the start, so that the loop closes and the return-to-home leg is
+  # short. A mission that ends on the far side of the room from where it started
+  # spends its last flying seconds, the ones with the least battery, crossing the
+  # whole test area.
+  - name: home
+    position: [1.00, 0.90, 1.20]
+    dwell_s: 1.5

@@ -1,0 +1,8 @@
+case,cause,detail,detected_s,landed_s,response_s,final_state,final_cause,aborted,waypoints_reached,waypoints,flight_s,silent_cycles,transitions
+critical_battery,LOW_BATTERY,battery 25 per cent,0.65,5.1,4.45,LANDED,CRITICAL_BATTERY,,0,5,5.1,1,4
+link_loss,LOCALISATION_LOST,no fix for 2.1 s,5.65,44.1,38.45,LANDED,LINK_LOSS,,4,5,44.1,523,10
+lossy_link,LOCALISATION_LOST,no fix for 2.2 s,5.95,24.85,18.9,LANDED,NONE,,5,5,24.85,1,10
+low_battery,LOW_BATTERY,battery 25 per cent,2.85,7.8,4.95,LANDED,LOW_BATTERY,,0,5,7.8,1,5
+nominal,LOCALISATION_LOST,no fix for 2.1 s,5.65,25.65,20.0,LANDED,NONE,,5,5,25.65,1,12
+refused_battery,LOW_BATTERY,"refused to take off: battery 20 per cent, already below the 25 per cent return threshold",0.05,0.05,0.0,LANDED,LOW_BATTERY,"refused to take off: battery 20 per cent, already below the 25 per cent return threshold",0,5,0.05,1,2
+video_loss,LOCALISATION_LOST,no fix for 2.1 s,5.65,24.65,19.0,LANDED,LOCALISATION_LOST,,3,5,24.65,1,9
