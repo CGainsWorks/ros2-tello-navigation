@@ -2,10 +2,10 @@
 
 **Never run against an aircraft.** This project has no Tello. Everything here is
 written from DJI's published SDK 2.0 document and from the protocol as it is
-widely described, it is exercised against a loopback socket in the test suite
-and it has never exchanged a packet with a real one. ``docs/HARDWARE.md`` lists
-what would have to be checked before it is trusted and the first item on that
-list is this file.
+widely described, it is exercised against a loopback socket and against the
+emulator in the test suite and it has never exchanged a packet with a real one.
+``docs/HARDWARE.md`` lists what would have to be checked before it is trusted
+and the first item on that list is this file.
 
 Why not djitellopy
 ------------------
@@ -34,11 +34,16 @@ point:
 * **11111**, the H.264 video stream, after ``streamon``.
 
 Video decoding is the part that cannot be done in the standard library. The
-stream is raw H.264 in UDP datagrams with no container, so it needs a decoder;
-the two workable options are PyAV and an ``ffmpeg`` subprocess reading from
-stdin. This class takes either through a pluggable decoder object and ships
-neither, because a dependency this project cannot test is a dependency it should
-not assert.
+stream is raw H.264 in UDP datagrams with no container, so it needs a decoder.
+This class takes one as a callable, so the transport does not import a codec;
+:class:`tello_core.link.video.H264Decoder` is the one this repository ships,
+FFmpeg's H.264 parser and decoder through PyAV, and it is tested against the H.264
+that the emulator in :mod:`tello_core.emulator` encodes with libx264.
+
+The emulator is also what this driver is exercised against end to end: the same
+three ports, the same text protocol, state strings and an H.264 stream, on the
+loopback interface. That is evidence the driver and the emulator agree with each
+other. Neither has met an aircraft.
 """
 
 from __future__ import annotations
@@ -181,19 +186,32 @@ class UdpLink(TelloLink):
         if self.video_decoder is None:
             self._detail = (
                 "no video decoder supplied. The Tello streams raw H.264 with no "
-                "container, so a decoder has to be passed in; see the module docstring."
+                "container, so a decoder has to be passed in, for example "
+                "tello_core.link.video.H264Decoder."
             )
+            return False
+        # The socket is bound before streamon, not after. The stream starts the
+        # moment the aircraft accepts the command and its first datagrams carry
+        # the parameter sets and the keyframe the decoder needs; binding late
+        # means waiting a whole keyframe interval for the next one.
+        try:
+            self._video_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._video_socket.settimeout(0.5)
+            # A keyframe arrives as a burst of a few dozen datagrams and the
+            # default receive buffer on some systems is smaller than that.
+            try:
+                self._video_socket.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 21)
+            except OSError:
+                pass
+            self._video_socket.bind(("", self.settings.video_port))
+        except OSError as error:
+            self._detail = f"could not open the video socket: {error}"
             return False
         response = self._command("streamon")
         if response is None or not response.lower().startswith("ok"):
             self._detail = f"streamon refused: {response!r}"
-            return False
-        try:
-            self._video_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._video_socket.settimeout(0.5)
-            self._video_socket.bind(("", self.settings.video_port))
-        except OSError as error:
-            self._detail = f"could not open the video socket: {error}"
+            self._video_socket.close()
+            self._video_socket = None
             return False
         self._start_thread(self._video_loop, "tello-video")
         return True
@@ -305,12 +323,31 @@ class UdpLink(TelloLink):
         """Send and wait for the reply. Used only during connection setup."""
         if self._command_socket is None:
             return None
+        # Discard replies nobody waited for. takeoff, land and the rc keepalive
+        # are sent without reading the answer and the aircraft still sends one,
+        # so without this the next command that does wait reads a stale "ok"
+        # belonging to an earlier command, for example streamon sent after a
+        # takeoff reporting the takeoff's reply as its own.
+        self._drain_replies()
         self._send(text, expect_response=False)
         try:
             payload, _ = self._command_socket.recvfrom(self.settings.receive_buffer)
         except (socket.timeout, OSError):
             return None
         return payload.decode("ascii", "replace").strip()
+
+    def _drain_replies(self) -> None:
+        handle = self._command_socket
+        if handle is None:
+            return
+        handle.setblocking(False)
+        try:
+            while True:
+                handle.recvfrom(self.settings.receive_buffer)
+        except (BlockingIOError, OSError):
+            pass
+        finally:
+            handle.settimeout(self.settings.command_timeout)
 
     def _send(self, text: str, expect_response: bool = False) -> None:
         if self._command_socket is None:

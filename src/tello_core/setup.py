@@ -37,7 +37,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-
+            "tello_emulator = tello_core.emulator.__main__:main",
         ],
     },
 )

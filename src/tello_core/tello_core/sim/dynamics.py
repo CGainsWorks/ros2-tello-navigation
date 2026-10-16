@@ -192,6 +192,16 @@ class TelloDynamics:
             self._takeoff_pending = True
             self._land_pending = False
 
+    @property
+    def taking_off(self) -> bool:
+        """True while the open-loop take-off climb is still in progress."""
+        return self._takeoff_pending
+
+    @property
+    def landing(self) -> bool:
+        """True while a commanded landing has not yet reached the ground."""
+        return self._land_pending
+
     def land(self) -> None:
         if self.state.flying:
             self._land_pending = True
