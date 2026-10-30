@@ -85,10 +85,18 @@ pins it and `scripts/check_flight.py --expect-silent` checks it on every CI run,
 because it is the kind of behaviour that an otherwise sensible refactor would
 remove.
 
-The cost is that the aircraft hovers, drifting, for up to fifteen seconds before
-its own timer fires. In a 4 x 3 m room at the measured 5 cm/s of drift that is
-well inside the walls. In a larger or windier space it would not be and that is
-in `docs/LIMITATIONS.md` rather than hidden here.
+The cost is up to fifteen seconds before the aircraft's own timer fires and
+what the aircraft does in that time is **not** a gentle hover. This document used
+to say it was, at 5 cm/s of drift. The repository's own evidence says otherwise:
+the simulator and the emulator both hold the last `rc` command through an
+outage, so the aircraft keeps flying whatever it was last told. In the committed
+offline `link_loss` case (simulated) that was a turn and it orbited the room for
+the whole outage; in the emulator launch test the last command was a cruise leg
+and it flew several metres out of the room before landing. Whether a real Tello
+holds its last `rc` command through an outage is not known here and is item 6 in
+`docs/HARDWARE.md`. If it does, falling silent still lets the aircraft land
+itself, though only after flying on for up to fifteen seconds. See
+`docs/LIMITATIONS.md`.
 
 ---
 

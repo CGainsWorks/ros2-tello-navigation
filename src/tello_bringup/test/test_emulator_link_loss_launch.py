@@ -13,6 +13,7 @@ from pathlib import Path
 
 import launch_testing
 import launch_testing.asserts
+import numpy as np
 import pytest
 import rclpy
 
@@ -77,6 +78,13 @@ class TestLinkLoss(unittest.TestCase):
             and link_up[0] <= e["wall_time"] <= down["wall_time"]
         ]
         self.assertEqual(rc_after, [], "rc reached the aircraft after LINK_LOSS")
+        # How far the aircraft went while nobody could command it. Reported, not
+        # bounded: the emulator, like the simulator, holds the last rc command
+        # through an outage, so this is whatever the last command was, flown for
+        # up to fifteen seconds. Whether a Tello does the same is in HARDWARE.md.
+        window = (truth["wall_time"] >= link_down[0]) & (truth["wall_time"] <= down["wall_time"])
+        path = np.stack([truth[a][window] for a in ("x", "y")], axis=1)
+        travelled = float(np.sum(np.linalg.norm(np.diff(path, axis=0), axis=1)))
         landed_by = (
             "own dead-man timer"
             if any(e["event"] == "auto_land" for e in events)
@@ -94,6 +102,8 @@ class TestLinkLoss(unittest.TestCase):
                 "commands_dropped_in_outage": sum(e["event"] == "dropped" for e in events),
                 "rc_received_between_link_return_and_touchdown": len(rc_after),
                 "landed_by": landed_by,
+                "position_at_link_loss": harness.truth_position(truth, link_down[0]).tolist(),
+                "horizontal_path_from_link_loss_to_touchdown_m": travelled,
                 "touchdown": down,
             },
         )
