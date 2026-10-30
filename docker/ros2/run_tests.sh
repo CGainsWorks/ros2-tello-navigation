@@ -7,10 +7,13 @@
 set -euo pipefail
 
 cd /ws
+# The ROS setup scripts read unset variables, so nounset is off while sourcing.
+set +u
 # shellcheck disable=SC1091
 source /opt/ros/humble/setup.bash
 # shellcheck disable=SC1091
 source install/setup.bash
+set -u
 
 export TELLO_RESULTS="${TELLO_RESULTS:-/ws/results/ros2}"
 mkdir -p "$TELLO_RESULTS"

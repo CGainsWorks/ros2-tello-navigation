@@ -1,0 +1,14 @@
+# Keep build contexts small and free of anything machine-specific.
+.git
+.venv
+venv
+build
+install
+log
+**/__pycache__
+.pytest_cache
+.ruff_cache
+results/ci
+results/local
+results/quick
+results/ros2

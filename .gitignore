@@ -30,6 +30,8 @@ results/local/
 results/quick/
 results/ci/
 results/reproduce/
+# ROS 2 launch-test output: simulated truth, emulator event logs, JUnit XML.
+results/ros2/
 datasets/
 *.mp4
 *.avi

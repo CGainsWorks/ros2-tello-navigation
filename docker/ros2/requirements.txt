@@ -1,0 +1,13 @@
+# Python packages for the ROS 2 Humble image, on top of what Ubuntu 22.04 and
+# the ROS apt repository provide (numpy 1.21, PyYAML, rclpy and friends).
+#
+# Pinned, unlike the top-level requirements.txt, because this image has a
+# constraint the plain-Python side does not: the message packages' generated C
+# extensions are built against Ubuntu's numpy 1.21 and a numpy 2 wheel would
+# break every `from tello_msgs.msg import ...` with an ABI error.
+numpy<2
+# 4.10 is the newest OpenCV wheel that still supports numpy 1.x on Python 3.10
+# and it has cv2.QRCodeDetectorAruco, the detector backend the results use.
+opencv-python-headless==4.10.0.84
+# FFmpeg with libx264, bundled in the wheel.
+av==17.1.0

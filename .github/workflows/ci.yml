@@ -12,12 +12,15 @@ name: CI
 #   * `concurrency` with `cancel-in-progress`. Pushing three times in five
 #     minutes costs one run, not three. This is the single biggest saver and it
 #     costs nothing.
-#   * Two jobs on every push rather than one. That is the one deliberately
-#     *un*-economical choice: the two pay for a pip install each and merging
-#     them would save forty seconds of billed time. They are separate because
-#     Actions minutes are free on a public repository and feedback latency is
-#     not: a lint error should not wait behind a two-minute simulated flight. On
-#     a private repository the arithmetic reverses and they should be merged.
+#   * Three jobs on every push rather than one. That is the one deliberately
+#     *un*-economical choice: the two Python jobs pay for a pip install each
+#     and merging them would save forty seconds of billed time. They are
+#     separate because Actions minutes are free on a public repository and
+#     feedback latency is not: a lint error should not wait behind a two-minute
+#     simulated flight. The third builds the ROS 2 workspace in a cached
+#     container and flies the graph against the emulator; it is the slowest and
+#     runs in parallel with the other two. On a private repository the
+#     arithmetic reverses and the Python jobs should be merged.
 #   * One Python version. A matrix over three versions triples the bill to catch
 #     a class of problem this repository does not have: the code is plain Python
 #     with numpy and OpenCV and the test suite pins the behaviour that matters.
@@ -172,6 +175,54 @@ jobs:
           name: ci-flight-logs
           path: results/ci/
           retention-days: 7
+          if-no-files-found: warn
+
+  # The ROS 2 graph, built with colcon and flown end to end against the Tello
+  # emulator by launch_testing: a waypoint mission, a link loss and a low
+  # battery, each asserted against the emulator's (simulated) ground truth.
+  #
+  # In a container rather than with ROS installed on the runner, so that
+  # `docker build -f docker/ros2/Dockerfile .` reproduces this job exactly on a
+  # laptop. The image layers are cached in the Actions cache, so a push that
+  # changes only Python rebuilds only the colcon layer. Results leave the
+  # container by `docker cp`, not a bind mount: a writable bind mount is owned
+  # by the runner's user and the container's root cannot always write to it.
+  ros2:
+    name: ROS 2 graph against the emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build the Humble workspace image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/ros2/Dockerfile
+          tags: tello-ros2:ci
+          load: true
+          cache-from: type=gha,scope=ros2
+          cache-to: type=gha,scope=ros2,mode=max
+
+      - name: Launch tests
+        run: docker run --name tello-ros2 tello-ros2:ci
+
+      - name: Copy the results out of the container
+        if: always()
+        run: |
+          mkdir -p results
+          docker cp tello-ros2:/ws/results/ros2 results/ros2 || true
+          docker rm -f tello-ros2 || true
+
+      - name: Upload the launch-test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ros2-launch-tests
+          path: results/ros2/
+          retention-days: 14
           if-no-files-found: warn
 
   # Everything that re-derives a committed result. Weekly and on request.
