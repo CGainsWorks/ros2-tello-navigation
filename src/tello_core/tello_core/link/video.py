@@ -16,8 +16,17 @@ H.264 *parser* first, which finds access-unit boundaries in an arbitrary byte
 stream. That makes the decoder indifferent to how the stream was cut into
 datagrams, which matters because the packet size the aircraft uses is widely
 described (1460-byte datagrams, with a short one ending each frame) and not
-documented by DJI. The cost is one frame of latency: the parser only knows a
-frame has ended when the next one starts.
+documented by DJI.
+
+A parser on its own costs a frame of latency: it only knows a frame has ended
+when the next one starts. At the emulator's achieved frame rate that was 140 ms
+on every marker fix, which the fusion filter cannot tell from a wrong position,
+and the first launch tests lost localisation on it. So by default a datagram
+shorter than :data:`TELLO_VIDEO_DATAGRAM` also flushes the parser, which hands
+the frame over the moment its last datagram arrives. That relies on the widely
+described framing; ``flush_on_short_datagram=False`` turns it off and the
+decoder then depends on nothing but the byte stream. ``docs/HARDWARE.md`` lists
+checking which is right for a real aircraft.
 
 A decoder that joins the stream mid-way, which is every decoder on a real link,
 discards everything until the first keyframe with its parameter sets. Those
@@ -39,8 +48,8 @@ TELLO_VIDEO_DATAGRAM = 1460
 """Bytes per video datagram, as the Tello is widely described to send them.
 
 Not from DJI's SDK document, which does not specify it. The emulator cuts its
-stream to this size so the driver sees datagrams shaped like the aircraft's; the
-decoder does not depend on it."""
+stream to this size so the driver sees datagrams shaped like the aircraft's. The
+decoder uses a shorter datagram as an end-of-frame hint and can be told not to."""
 
 
 def _import_av():
@@ -61,10 +70,11 @@ class H264Decoder:
     payload completed, or ``None`` while the parser is still accumulating.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, flush_on_short_datagram: bool = True) -> None:
         av = _import_av()
         self._av = av
         self._context = av.CodecContext.create("h264", "r")
+        self.flush_on_short_datagram = flush_on_short_datagram
         self.datagrams = 0
         self.bytes_in = 0
         self.frames_decoded = 0
@@ -85,20 +95,28 @@ class H264Decoder:
         newest = None
         for image in self._decode(datagram):
             newest = image
+        if self.flush_on_short_datagram and len(datagram) < TELLO_VIDEO_DATAGRAM:
+            for image in self._decode(None, drain_decoder=False):
+                newest = image
         return newest
 
     def flush(self) -> List[np.ndarray]:
         """Drain the parser and the decoder at the end of a stream."""
         return list(self._decode(None))
 
-    def _decode(self, data: Optional[bytes]) -> Iterator[np.ndarray]:
+    def _decode(self, data: Optional[bytes], drain_decoder: bool = True) -> Iterator[np.ndarray]:
+        """Parse ``data`` (``None`` flushes the parser) and decode what it yields.
+
+        ``drain_decoder`` also flushes the decoder itself, which ends the stream;
+        a frame-boundary flush must not do that.
+        """
         error_types = (self._av.error.FFmpegError, ValueError)
         try:
             packets = self._context.parse(data)
         except error_types:
             self.packets_rejected += 1
             return
-        if data is None:
+        if data is None and drain_decoder:
             packets = list(packets) + [None]
         for packet in packets:
             try:
@@ -166,8 +184,12 @@ class H264Encoder:
             raise ValueError(f"expected {(self.height, self.width)}, got {gray.shape}")
         # The renderer is monochrome, so the chroma planes are flat grey. Built
         # directly as planar 4:2:0 rather than converted, which would cost a
-        # colour-space conversion per frame to produce the same bytes.
-        planar = np.concatenate([gray.astype(np.uint8, copy=False), self._chroma], axis=0)
+        # colour-space conversion per frame to produce the same bytes. Luma goes
+        # into the 16 to 235 video range, which is what a decoder assumes when
+        # the stream does not say otherwise; full-range luma would come back
+        # out of the decoder with its contrast stretched.
+        luma = (16.0 + gray.astype(np.float32) * (219.0 / 255.0) + 0.5).astype(np.uint8)
+        planar = np.concatenate([luma, self._chroma], axis=0)
         frame = self._av.VideoFrame.from_ndarray(planar, format="yuv420p")
         frame.pts = self._pts
         self._pts += 1

@@ -103,14 +103,27 @@ def test_round_trip_through_tello_sized_datagrams(rendered_frames):
         # catches a decoder producing the wrong frame or garbage, not a codec
         # setting that changes the artefacts.
         error = np.abs(image[:, :, 0].astype(int) - original.astype(int)).mean()
-        assert error < 12.0
+        assert error < 6.0
+
+
+def test_each_frame_is_handed_over_on_its_own_last_datagram(rendered_frames):
+    """No frame of parser latency when the stream uses the Tello framing."""
+    stream = _encode(rendered_frames)
+    decoder = H264Decoder()
+    per_frame = []
+    for chunk in stream[:-1]:
+        datagrams = packetise(chunk)
+        results = [decoder(d) for d in datagrams]
+        per_frame.append(sum(r is not None for r in results))
+        assert results[-1] is not None or len(chunk) % TELLO_VIDEO_DATAGRAM == 0
+    assert per_frame == [1] * len(rendered_frames)
 
 
 def test_decoder_does_not_care_how_the_stream_was_cut(rendered_frames):
-    """The aircraft's datagram size is not documented, so the decoder must not
-    depend on it."""
+    """The aircraft's datagram size is not documented, so with the end-of-frame
+    hint switched off the decoder must not depend on it at all."""
     stream = b"".join(_encode(rendered_frames))
-    decoder = H264Decoder()
+    decoder = H264Decoder(flush_on_short_datagram=False)
     count = sum(decoder(chunk) is not None for chunk in packetise(stream, 377))
     count += len(decoder.flush())
     assert count == len(rendered_frames)
@@ -366,3 +379,30 @@ def test_the_udp_driver_flies_the_emulator(emulator_factory, marker_map, config,
         assert link.status().packets_received > 10
     finally:
         link.close()
+
+
+def test_pooled_rendering_streams_decodable_video(emulator_factory):
+    """The render pool the emulator can use on a machine with cores to spare."""
+    emulator, client = emulator_factory(render_workers=1, video_rate=10.0)
+    video = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    video.bind(("127.0.0.1", emulator.settings.video_port))
+    video.settimeout(0.5)
+    decoder = H264Decoder()
+    try:
+        assert client.ask("command") == "ok"
+        assert client.ask("streamon") == "ok"
+        frames = []
+        deadline = time.monotonic() + 20.0
+        while time.monotonic() < deadline and len(frames) < 3:
+            try:
+                payload, _ = video.recvfrom(2048)
+            except socket.timeout:
+                continue
+            image = decoder(payload)
+            if image is not None:
+                frames.append(image)
+        assert len(frames) >= 3
+        assert frames[-1].shape == (720, 960, 3)
+        assert emulator.stats()["render_delay_s"] > 0.0
+    finally:
+        video.close()

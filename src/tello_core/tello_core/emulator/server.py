@@ -53,13 +53,16 @@ from __future__ import annotations
 
 import csv
 import json
+import multiprocessing
 import socket
 import sys
 import threading
 import time
 import traceback
+from collections import deque
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field, replace
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -115,6 +118,12 @@ class EmulatorSettings:
     achieved rate is lower; :meth:`TelloEmulator.stats` reports it."""
 
     physics_rate: float = 100.0
+    render_workers: int = 0
+    """Processes rendering frames in parallel. Zero renders in the video thread,
+    which is simplest and enough for the unit tests; the launch tests use a pool
+    because the numpy ray caster manages only a handful of 960x720 frames per
+    second on one core."""
+
     bitrate: int = 1_500_000
     """libx264 target bitrate in bits per second. An emulator setting, not a
     figure measured on an aircraft."""
@@ -170,8 +179,9 @@ class TelloEmulator:
             config,
             replace(
                 nominal,
+                # In-flight drain only, as scripts/run_mission.py --battery-drain
+                # does, so a battery scenario means the same thing in both.
                 hover_current=nominal.hover_current * max(self.settings.battery_drain, 0.0),
-                idle_current=nominal.idle_current * max(self.settings.battery_drain, 0.0),
             ),
             start_position=start_position,
             start_yaw=start_yaw,
@@ -218,11 +228,14 @@ class TelloEmulator:
             "replies_sent": 0,
             "state_sent": 0,
             "frames_rendered": 0,
+            "frames_skipped": 0,
             "frames_sent": 0,
             "video_datagrams": 0,
             "video_bytes": 0,
         }
         self._video_started_at: Optional[float] = None
+        self._render_delay = 0.1
+        """Running estimate of seconds from capture to send; see _video_loop."""
 
     # ------------------------------------------------------------------ lifecycle
 
@@ -645,58 +658,117 @@ class TelloEmulator:
     # --------------------------------------------------------------------- video
 
     def _video_loop(self) -> None:
-        period = 1.0 / self.settings.video_rate
-        next_time = self._clock()
-        while self._running.is_set():
-            if not self._streaming or self._client_ip is None:
-                time.sleep(0.02)
-                next_time = self._clock()
-                continue
-            if self._video_started_at is None:
-                self._video_started_at = self._clock()
-            delay = next_time - self._clock()
-            if delay > 0:
-                time.sleep(delay)
-            # Behind schedule means the renderer cannot keep up. Skip ahead
-            # rather than bursting to catch up, which is what a camera does.
-            next_time = max(next_time + period, self._clock())
+        """Capture on a fixed schedule, render, encode in capture order, send.
 
-            with self._lock:
-                truth = self.dynamics.state.copy()
-                destination = (self._client_ip, self.settings.video_port)
-            pose = (
-                make_transform(euler_to_matrix(truth.yaw, truth.pitch, truth.roll), truth.position)
-                @ self.config.mount.transform()
-            )
-            image = self.renderer.render(
-                pose,
-                angular_velocity=np.array([0.0, 0.0, truth.yaw_rate]),
-                linear_velocity=truth.velocity,
-                exposure_time=self.settings.exposure_time,
-            )
-            self.counters["frames_rendered"] += 1
-            if self._encoder is None:
-                self._encoder = H264Encoder(
-                    self.camera.width,
-                    self.camera.height,
-                    fps=self.settings.video_rate,
-                    bitrate=self.settings.bitrate,
-                    keyframe_interval=self.settings.keyframe_interval,
+        With ``render_workers`` above zero the frames are rendered in a process
+        pool, so several are in flight at once. A capture tick that finds every
+        worker busy is skipped, as a camera whose pipeline is full drops a frame.
+
+        Rendering takes the emulator tens of milliseconds of its own and on a
+        loaded machine a good deal more. That delay is an artefact of a numpy
+        ray caster, not a property of a camera, and left alone it showed up as
+        a marker fix stamped on arrival but describing where the aircraft had
+        been: at cruise speed the launch tests saw fixes 0.3 m behind the truth
+        and the failsafe holding for lost localisation. So each frame is
+        rendered at the pose extrapolated, from the true velocity and yaw rate,
+        to when it is expected to be sent, using a running estimate of the
+        delay from capture to send. The stream then has the latency of the link
+        and the decoder only. A real camera's own latency is not modelled;
+        ``docs/HARDWARE.md`` lists measuring it.
+        """
+        period = 1.0 / self.settings.video_rate
+        workers = max(0, int(self.settings.render_workers))
+        pool = self._start_render_pool(workers) if workers else None
+        pending: Deque[Tuple[object, Tuple[str, int], float]] = deque()
+        next_time = self._clock()
+        try:
+            while self._running.is_set():
+                if not self._streaming or self._client_ip is None:
+                    pending.clear()
+                    time.sleep(0.02)
+                    next_time = self._clock()
+                    continue
+                if self._video_started_at is None:
+                    self._video_started_at = self._clock()
+
+                while pending and (pool is None or pending[0][0].done()):
+                    job, destination, captured = pending.popleft()
+                    image = job if pool is None else job.result()
+                    self._encode_and_send(image, destination)
+                    delay = self._clock() - captured
+                    self._render_delay += 0.2 * (delay - self._render_delay)
+
+                now = self._clock()
+                if now < next_time:
+                    time.sleep(min(next_time - now, 0.005))
+                    continue
+                # Behind schedule means the renderer cannot keep up. Skip ahead
+                # rather than bursting to catch up, which is what a camera does.
+                next_time = max(next_time + period, now)
+                if pool is not None and len(pending) >= workers:
+                    self.counters["frames_skipped"] += 1
+                    continue
+
+                with self._lock:
+                    truth = self.dynamics.state.copy()
+                    destination = (self._client_ip, self.settings.video_port)
+                ahead = self._render_delay
+                pose = (
+                    make_transform(
+                        euler_to_matrix(
+                            truth.yaw + truth.yaw_rate * ahead, truth.pitch, truth.roll
+                        ),
+                        truth.position + truth.velocity * ahead,
+                    )
+                    @ self.config.mount.transform()
                 )
-            stream = self._encoder.encode(image[:, :, 0])
-            now = self._clock()
-            if not stream or not self._video_up(now):
-                continue
-            if self._rng.random() < self.settings.faults.frame_loss:
-                continue
-            for datagram in packetise(stream, TELLO_VIDEO_DATAGRAM):
-                try:
-                    self._send_socket.sendto(datagram, destination)
-                except OSError:
-                    break
-                self.counters["video_datagrams"] += 1
-                self.counters["video_bytes"] += len(datagram)
-            self.counters["frames_sent"] += 1
+                arguments = (
+                    pose,
+                    np.array([0.0, 0.0, truth.yaw_rate]),
+                    truth.velocity.copy(),
+                    self.settings.exposure_time,
+                )
+                if pool is None:
+                    job = _render_with(self.renderer, *arguments)
+                else:
+                    job = pool.submit(_render_in_worker, *arguments)
+                pending.append((job, destination, now))
+        finally:
+            if pool is not None:
+                pool.shutdown(wait=False, cancel_futures=True)
+
+    def _start_render_pool(self, workers: int):
+        context = multiprocessing.get_context("spawn")
+        return ProcessPoolExecutor(
+            max_workers=workers,
+            mp_context=context,
+            initializer=_init_render_worker,
+            initargs=(self.room, self.camera, self.settings.seed + 1),
+        )
+
+    def _encode_and_send(self, image: np.ndarray, destination) -> None:
+        self.counters["frames_rendered"] += 1
+        if self._encoder is None:
+            self._encoder = H264Encoder(
+                self.camera.width,
+                self.camera.height,
+                fps=self.settings.video_rate,
+                bitrate=self.settings.bitrate,
+                keyframe_interval=self.settings.keyframe_interval,
+            )
+        stream = self._encoder.encode(image)
+        if not stream or not self._video_up(self._clock()):
+            return
+        if self._rng.random() < self.settings.faults.frame_loss:
+            return
+        for datagram in packetise(stream, TELLO_VIDEO_DATAGRAM):
+            try:
+                self._send_socket.sendto(datagram, destination)
+            except OSError:
+                return
+            self.counters["video_datagrams"] += 1
+            self.counters["video_bytes"] += len(datagram)
+        self.counters["frames_sent"] += 1
 
     # -------------------------------------------------------------------- output
 
@@ -706,6 +778,7 @@ class TelloEmulator:
         if self._video_started_at is not None:
             elapsed = max(self._clock() - self._video_started_at, 1e-6)
             result["video_fps_achieved"] = round(self.counters["frames_rendered"] / elapsed, 2)
+            result["render_delay_s"] = round(self._render_delay, 3)
         result["auto_landed"] = self._auto_landed
         return result
 
@@ -788,3 +861,39 @@ def _as_number(text: str) -> Optional[float]:
 
 def _counts(value: float, maximum: float) -> int:
     return int(np.clip(round(value / maximum * 100.0), -100, 100))
+
+
+# ------------------------------------------------------------- render workers
+
+_WORKER_RENDERER: Optional[Renderer] = None
+
+
+def _init_render_worker(room: Room, camera: CameraModel, seed: int) -> None:
+    """Build one renderer per worker process.
+
+    SIGINT is ignored here: ROS 2 launch interrupts the whole process group on
+    shutdown and the parent, not each worker, decides when rendering stops.
+    """
+    import os
+    import signal
+
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    global _WORKER_RENDERER
+    _WORKER_RENDERER = Renderer(
+        room, camera, RenderSettings(jpeg_quality=0, seed=seed + os.getpid() % 10007)
+    )
+
+
+def _render_in_worker(pose, angular_velocity, linear_velocity, exposure_time) -> np.ndarray:
+    return _render_with(_WORKER_RENDERER, pose, angular_velocity, linear_velocity, exposure_time)
+
+
+def _render_with(renderer, pose, angular_velocity, linear_velocity, exposure_time) -> np.ndarray:
+    image = renderer.render(
+        pose,
+        angular_velocity=angular_velocity,
+        linear_velocity=linear_velocity,
+        exposure_time=exposure_time,
+    )
+    return np.ascontiguousarray(image[:, :, 0])
+

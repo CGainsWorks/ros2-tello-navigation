@@ -45,6 +45,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--state-port", type=int, default=8890)
     parser.add_argument("--video-port", type=int, default=11111)
     parser.add_argument("--video-rate", type=float, default=30.0)
+    parser.add_argument(
+        "--render-workers",
+        type=int,
+        default=0,
+        help="processes rendering frames in parallel; 0 renders in the video thread",
+    )
     parser.add_argument("--bitrate", type=int, default=1_500_000)
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--battery", type=float, default=1.0, help="starting charge, 0 to 1")
@@ -113,6 +119,7 @@ def main(argv=None) -> int:
         state_port=args.state_port,
         video_port=args.video_port,
         video_rate=args.video_rate,
+        render_workers=args.render_workers,
         bitrate=args.bitrate,
         seed=args.seed,
         battery=args.battery,
