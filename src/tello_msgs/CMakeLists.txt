@@ -17,6 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FailsafeEvent.msg"
   "msg/WaypointEvent.msg"
   "msg/LinkStatus.msg"
+  "msg/TelloState.msg"
   DEPENDENCIES std_msgs geometry_msgs
 )
 

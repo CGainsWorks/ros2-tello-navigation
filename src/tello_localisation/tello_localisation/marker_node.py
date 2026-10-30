@@ -37,6 +37,7 @@ if _CORE.is_dir() and str(_CORE) not in sys.path:
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import Image
@@ -199,10 +200,16 @@ def main(args=None) -> None:
     node = MarkerNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        # launch sends SIGINT and then, if a node is slow to go, SIGTERM; a
+        # second interrupt arriving inside destroy_node must not turn a clean
+        # shutdown into a traceback and a non-zero exit code.
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
         rclpy.try_shutdown()
 
 

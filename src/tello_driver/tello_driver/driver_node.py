@@ -12,8 +12,11 @@ implementation of the flight logic.
 
 Publishes
 ---------
-``image`` (``sensor_msgs/Image``), ``imu`` (``sensor_msgs/Imu``),
-``link_status`` (``tello_msgs/LinkStatus``), ``battery`` (``sensor_msgs/BatteryState``)
+``tello_state`` (``tello_msgs/TelloState``), every decoded state packet, which is
+what the fusion filter and the failsafe read; ``image`` (``sensor_msgs/Image``),
+decoded from the H.264 stream; ``imu`` (``sensor_msgs/Imu``) and ``battery``
+(``sensor_msgs/BatteryState``) for standard tools; ``link_status``
+(``tello_msgs/LinkStatus``).
 
 Subscribes
 ----------
@@ -35,6 +38,7 @@ while the aircraft is above head height.
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 _CORE = Path(__file__).resolve().parents[2] / "tello_core"
@@ -43,16 +47,18 @@ if _CORE.is_dir() and str(_CORE) not in sys.path:
 
 import numpy as np
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
 from sensor_msgs.msg import BatteryState, Image, Imu
 from std_srvs.srv import Trigger
 
 from tello_core.config import AircraftConfig
-from tello_core.link.udp import UdpLink
+from tello_core.link.udp import UdpLink, UdpSettings
 from tello_core.types import RcCommand
 from tello_msgs.msg import LinkStatus
 from tello_msgs.msg import RcCommand as RcMessage
+from tello_msgs.msg import TelloState as TelloStateMessage
 
 SENSOR_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -74,6 +80,25 @@ class DriverNode(Node):
         self.declare_parameter("frame_id", "camera")
         self.declare_parameter("sim_seed", 1)
         self.declare_parameter("sim_start", [1.0, 0.9, 0.0])
+        # Where the aircraft is. The defaults are the Tello's own: its access
+        # point puts it at 192.168.10.1 and it answers on 8889 to whichever port
+        # the command came from. The emulator launch changes only the address
+        # and lets the operating system pick the local command port, because the
+        # emulator already holds 8889 on the same machine.
+        self.declare_parameter("tello_address", "192.168.10.1")
+        self.declare_parameter("command_port", 8889)
+        self.declare_parameter("local_command_port", 8889)
+        self.declare_parameter("state_port", 8890)
+        self.declare_parameter("video_port", 11111)
+        # bgr8 is what the decoder produces. mono8 is a third of the bytes per
+        # frame on the wire between nodes and the marker detector converts to
+        # grey first anyway.
+        self.declare_parameter("image_encoding", "bgr8")
+        # Seconds to keep trying to enter SDK mode. A Tello that has only just
+        # been switched on, or a laptop still joining its access point, does not
+        # answer the first "command"; neither does an emulator still building
+        # its room.
+        self.declare_parameter("connect_timeout", 15.0)
 
         config_path = self.get_parameter("aircraft_config").value
         self.config = AircraftConfig.from_yaml(config_path) if config_path else AircraftConfig()
@@ -81,12 +106,14 @@ class DriverNode(Node):
 
         link_type = str(self.get_parameter("link_type").value).lower()
         self.link = self._build_link(link_type)
-        if not self.link.connect():
-            raise RuntimeError(
-                f"could not connect over the '{link_type}' link: {self.link.status().detail}"
-            )
-        self.link.start_video()
+        self._connect(link_type, float(self.get_parameter("connect_timeout").value))
+        if not self.link.start_video():
+            self.get_logger().error(f"no video: {self.link.status().detail}")
+        self.image_encoding = str(self.get_parameter("image_encoding").value)
+        if self.image_encoding not in ("bgr8", "mono8"):
+            raise RuntimeError(f"image_encoding must be bgr8 or mono8, not {self.image_encoding!r}")
 
+        self.state_publisher = self.create_publisher(TelloStateMessage, "tello_state", 10)
         self.image_publisher = self.create_publisher(Image, "image", SENSOR_QOS)
         self.imu_publisher = self.create_publisher(Imu, "imu", SENSOR_QOS)
         self.status_publisher = self.create_publisher(LinkStatus, "link_status", 10)
@@ -105,10 +132,19 @@ class DriverNode(Node):
     def _build_link(self, link_type: str):
         if link_type == "udp":
             self.get_logger().warning(
-                "the UDP driver has never been run against a real Tello. See "
-                "docs/HARDWARE.md before flying anything with it."
+                "the UDP driver has never been run against a real Tello, only against "
+                "the emulator. See docs/HARDWARE.md before flying anything with it."
             )
-            return UdpLink()
+            settings = UdpSettings(
+                address=(
+                    str(self.get_parameter("tello_address").value),
+                    int(self.get_parameter("command_port").value),
+                ),
+                local_command_port=int(self.get_parameter("local_command_port").value),
+                state_port=int(self.get_parameter("state_port").value),
+                video_port=int(self.get_parameter("video_port").value),
+            )
+            return UdpLink(settings, video_decoder=self._make_decoder())
         if link_type == "sim":
             from tello_core.camera import CameraModel
             from tello_core.localisation.markers import MarkerMap
@@ -130,17 +166,60 @@ class DriverNode(Node):
             )
         raise RuntimeError(f"unknown link_type {link_type!r}, expected 'udp' or 'sim'")
 
+    def _connect(self, link_type: str, timeout: float) -> None:
+        deadline = time.monotonic() + max(timeout, 0.0)
+        while not self.link.connect():
+            if time.monotonic() > deadline:
+                raise RuntimeError(
+                    f"could not connect over the '{link_type}' link: "
+                    f"{self.link.status().detail}"
+                )
+            self.get_logger().info(
+                f"no answer yet: {self.link.status().detail}", throttle_duration_sec=2.0
+            )
+            time.sleep(0.5)
+
+    def _make_decoder(self):
+        try:
+            from tello_core.link.video import H264Decoder
+
+            return H264Decoder()
+        except RuntimeError as error:
+            self.get_logger().error(f"{error}. Running without video.")
+            return None
+
     # ------------------------------------------------------------------- polling
 
     def _poll(self) -> None:
         state = self.link.poll_state()
         if state is not None:
+            self.state_publisher.publish(self._state_message(state))
             self.imu_publisher.publish(self._imu_message(state))
             self.battery_publisher.publish(self._battery_message(state))
 
         frame = self.link.poll_frame()
         if frame is not None:
             self.image_publisher.publish(self._image_message(frame))
+
+    def _state_message(self, state) -> TelloStateMessage:
+        message = TelloStateMessage()
+        message.header.stamp = self.get_clock().now().to_msg()
+        message.header.frame_id = "base_link"
+        message.accel.x, message.accel.y, message.accel.z = (
+            float(v) for v in np.asarray(state.accel).ravel()
+        )
+        message.gyro_z = float(state.gyro_z)
+        message.yaw, message.pitch, message.roll = (
+            float(v) for v in np.asarray(state.attitude).ravel()
+        )
+        message.velocity_body.x, message.velocity_body.y, message.velocity_body.z = (
+            float(v) for v in np.asarray(state.velocity_body).ravel()
+        )
+        message.height = float(state.height)
+        message.barometer = float(state.barometer)
+        message.battery = float(state.battery)
+        message.temperature = float(state.temperature)
+        return message
 
     def _imu_message(self, state) -> Imu:
         message = Imu()
@@ -176,6 +255,8 @@ class DriverNode(Node):
 
     def _image_message(self, frame) -> Image:
         image = frame.image
+        if self.image_encoding == "mono8" and image.ndim == 3:
+            image = image[:, :, 0] if _is_grey(image) else _to_grey(image)
         message = Image()
         message.header.stamp = self.get_clock().now().to_msg()
         message.header.frame_id = self.frame_id
@@ -251,6 +332,18 @@ class DriverNode(Node):
         return super().destroy_node()
 
 
+def _is_grey(image) -> bool:
+    """Cheap check on a few rows, so a colour camera is never silently mangled."""
+    rows = image[:: max(1, image.shape[0] // 8)]
+    return bool(np.array_equal(rows[:, :, 0], rows[:, :, 1]))
+
+
+def _to_grey(image):
+    import cv2
+
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+
 class _WallClockSimLink:
     """The simulator driven by a ROS clock instead of by its own.
 
@@ -322,10 +415,16 @@ def main(args=None) -> None:
     node = DriverNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        # launch sends SIGINT and then, if a node is slow to go, SIGTERM; a
+        # second interrupt arriving inside destroy_node must not turn a clean
+        # shutdown into a traceback and a non-zero exit code.
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
         rclpy.try_shutdown()
 
 

@@ -28,15 +28,16 @@ if _CORE.is_dir() and str(_CORE) not in sys.path:
 import numpy as np
 import rclpy
 from geometry_msgs.msg import TransformStamped
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import QoSHistoryPolicy, QoSProfile, QoSReliabilityPolicy
-from sensor_msgs.msg import Imu
 from tf2_ros import TransformBroadcaster
 
 from tello_core.localisation.fusion import Ekf, FusionSettings
 from tello_core.types import MarkerFix as CoreFix
 from tello_core.types import TelloState
 from tello_msgs.msg import MarkerFix, NavState
+from tello_msgs.msg import TelloState as TelloStateMessage
 
 SENSOR_QOS = QoSProfile(
     reliability=QoSReliabilityPolicy.BEST_EFFORT,
@@ -65,7 +66,7 @@ class FusionNode(Node):
         self.map_frame = str(self.get_parameter("map_frame").value)
         self.body_frame = str(self.get_parameter("body_frame").value)
 
-        self.create_subscription(Imu, "imu", self._on_imu, SENSOR_QOS)
+        self.create_subscription(TelloStateMessage, "tello_state", self._on_state, SENSOR_QOS)
         self.create_subscription(MarkerFix, "fix", self._on_fix, 10)
         self.publisher = self.create_publisher(NavState, "nav_state", 10)
         self.broadcaster = TransformBroadcaster(self)
@@ -76,37 +77,29 @@ class FusionNode(Node):
 
     # ------------------------------------------------------------------ callbacks
 
-    def _on_imu(self, message: Imu) -> None:
-        """The driver republishes the Tello state packet as an Imu.
+    def _on_state(self, message: TelloStateMessage) -> None:
+        """One decoded state packet, exactly as the offline runner feeds it.
 
-        Only the fields the aircraft actually measures are populated: linear
-        acceleration, the yaw rate and the orientation from its own attitude
-        filter. The rest are left at zero with a negative covariance, which is
-        the ROS convention for "not measured" and this node ignores them.
+        This used to arrive as a ``sensor_msgs/Imu`` and be rebuilt into a state
+        with the height and the body velocity set to zero, because an Imu has
+        nowhere to put them. The filter then applied a zero body velocity as a
+        measurement on every packet and its height update never ran.
+        ``tello_msgs/TelloState`` carries every field the decoder produces, so
+        the ROS graph and the offline runner now give the filter the same inputs.
         """
         stamp = message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
-        yaw, pitch, roll = _quaternion_to_euler(
-            message.orientation.x,
-            message.orientation.y,
-            message.orientation.z,
-            message.orientation.w,
-        )
         state = TelloState(
             timestamp=stamp,
-            accel=np.array(
-                [
-                    message.linear_acceleration.x,
-                    message.linear_acceleration.y,
-                    message.linear_acceleration.z,
-                ]
+            accel=np.array([message.accel.x, message.accel.y, message.accel.z]),
+            gyro_z=float(message.gyro_z),
+            attitude=np.array([message.yaw, message.pitch, message.roll]),
+            velocity_body=np.array(
+                [message.velocity_body.x, message.velocity_body.y, message.velocity_body.z]
             ),
-            gyro_z=float(message.angular_velocity.z),
-            attitude=np.array([yaw, pitch, roll]),
-            velocity_body=np.zeros(3),
-            height=0.0,
-            barometer=float("nan"),
-            battery=1.0,
-            temperature=float("nan"),
+            height=float(message.height),
+            barometer=float(message.barometer),
+            battery=float(message.battery),
+            temperature=float(message.temperature),
             valid=True,
         )
         self.filter.predict(state)
@@ -175,36 +168,21 @@ class FusionNode(Node):
         self.broadcaster.sendTransform(transform)
 
 
-def _quaternion_to_euler(x: float, y: float, z: float, w: float):
-    """Quaternion to intrinsic Z-Y-X angles, without tf_transformations.
-
-    Twenty lines rather than a dependency that is packaged differently on every
-    ROS distribution and is the single most common reason a node fails to start
-    on somebody else's machine.
-    """
-    sin_roll = 2.0 * (w * x + y * z)
-    cos_roll = 1.0 - 2.0 * (x * x + y * y)
-    roll = float(np.arctan2(sin_roll, cos_roll))
-
-    sin_pitch = 2.0 * (w * y - z * x)
-    sin_pitch = float(np.clip(sin_pitch, -1.0, 1.0))
-    pitch = float(np.arcsin(sin_pitch))
-
-    sin_yaw = 2.0 * (w * z + x * y)
-    cos_yaw = 1.0 - 2.0 * (y * y + z * z)
-    yaw = float(np.arctan2(sin_yaw, cos_yaw))
-    return yaw, pitch, roll
-
-
 def main(args=None) -> None:
     rclpy.init(args=args)
     node = FusionNode()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
-        node.destroy_node()
+        # launch sends SIGINT and then, if a node is slow to go, SIGTERM; a
+        # second interrupt arriving inside destroy_node must not turn a clean
+        # shutdown into a traceback and a non-zero exit code.
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
         rclpy.try_shutdown()
 
 

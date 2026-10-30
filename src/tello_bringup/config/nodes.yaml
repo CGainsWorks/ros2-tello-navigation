@@ -48,6 +48,7 @@ tello_fusion:
 tello_mission:
   ros__parameters:
     control_rate: 20.0
-    # False, always, with an aircraft on the bench. True takes off as soon as the
-    # first estimate arrives.
-    auto_arm: false
+    # auto_arm is deliberately not here. It is a launch argument (default false)
+    # and a node-specific entry in this file would override it: rcl applies
+    # entries for a named node after the /** entries that launch writes for its
+    # parameter dictionaries, so the launch argument silently had no effect.

@@ -112,6 +112,9 @@ def generate_launch_description() -> LaunchDescription:
                         **common,
                         "mission": LaunchConfiguration("mission"),
                         "auto_arm": LaunchConfiguration("auto_arm"),
+                        "control_config": _repo_file(
+                            "src", "tello_bringup", "config", "control.yaml"
+                        ),
                     },
                 ],
             ),
