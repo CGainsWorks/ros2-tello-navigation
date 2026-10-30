@@ -67,6 +67,18 @@ def test_ament_resource_marker_exists(repo_root, name):
     assert (_src(repo_root) / name / "resource" / name).is_file()
 
 
+@pytest.mark.parametrize("name", [p for p in PYTHON_PACKAGES if p != "tello_bringup"])
+def test_python_module_is_a_package_setuptools_can_find(repo_root, name):
+    """``find_packages()`` skips a directory without ``__init__.py``.
+
+    Three of the node packages shipped without one. Every check in this file
+    passed, colcon built them, installed their console scripts and installed no
+    code, so every node died on import with ``ModuleNotFoundError``. It was found
+    the first time the graph was launched against the emulator.
+    """
+    assert (_src(repo_root) / name / name / "__init__.py").is_file()
+
+
 @pytest.mark.parametrize("name", PYTHON_PACKAGES)
 def test_setup_py_parses_and_names_the_package(repo_root, name):
     path = _src(repo_root) / name / "setup.py"
