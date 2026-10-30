@@ -1,4 +1,4 @@
-"""The H.264 path and the SDK emulator, and the real driver against the emulator.
+"""The H.264 path, the SDK emulator and the real driver against the emulator.
 
 Three layers, each tested on its own before the next relies on it:
 

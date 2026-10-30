@@ -27,10 +27,10 @@ land the aircraft on its own.
 
 > ### There is no aircraft
 >
-> This was built and tested entirely against a simulator. No line of it has
-> exchanged a packet with a Tello, no marker has been printed and no room has
-> been surveyed. Every figure below is a statement about the algorithms, not about
-> a DJI Tello.
+> This was built and tested entirely against a simulator and an emulator. No line
+> of it has exchanged a packet with a Tello, no marker has been printed and no room
+> has been surveyed. Every figure below is a statement about the algorithms, not
+> about a DJI Tello.
 >
 > That is said here, in the output of every script that reports an accuracy and
 > in the metadata of every results file. **[docs/HARDWARE.md](docs/HARDWARE.md)**
@@ -57,15 +57,27 @@ Three minutes, no ROS, no hardware. It flies `missions/perimeter.yaml` in the
 simulator and writes `results/latest/` and `analysis/figures/`.
 
 ```bash
-make test        # 326 tests, about a minute
+make test        # 344 tests, under two minutes
 make validate    # check the marker map and every mission before flying them
 make detection   # measure what the detector can actually read
 make failsafe    # fly every failure case and keep the evidence
 make markers     # printable marker sheets with crop marks
 ```
 
-`ros2 launch tello_bringup sim.launch.py` runs the same flight logic as a ROS 2
-graph. See [docs/ROS2.md](docs/ROS2.md).
+The ROS 2 graph flies the same logic against a **Tello emulator**: a simulated
+aircraft that speaks Tello SDK 2.0 on UDP 8889, sends state strings to 8890 and
+streams H.264 to 11111, so the real driver, its PyAV decoder and every node run
+exactly as they would against a drone. CI builds the workspace with colcon and
+flies three launch tests against it: a waypoint mission, a link loss and a low
+battery, each asserted against the emulator's simulated ground truth.
+
+```bash
+docker build -f docker/ros2/Dockerfile -t tello-ros2 .
+docker run --rm --network none tello-ros2               # the launch tests
+ros2 launch tello_bringup emulator.launch.py auto_arm:=true   # in a Humble workspace
+```
+
+See [docs/EMULATOR.md](docs/EMULATOR.md) and [docs/ROS2.md](docs/ROS2.md).
 
 ---
 
@@ -201,8 +213,10 @@ as the SDK says it does.
 
 What it does not substitute for is the aircraft: the flight dynamics are a
 first-order velocity lag whose time constants are estimates and print quality,
-lens distortion, H.264 artefacts and Wi-Fi behaviour in a real building are all
-absent. [docs/LIMITATIONS.md](docs/LIMITATIONS.md) is the full list.
+lens distortion and Wi-Fi behaviour in a real building are all absent. H.264
+artefacts appear only on the emulator path, where frames really are encoded with
+libx264 and decoded with FFmpeg. [docs/LIMITATIONS.md](docs/LIMITATIONS.md) is
+the full list.
 
 ---
 
@@ -238,22 +252,25 @@ a named test. Fuller account in [docs/RESULTS.md](docs/RESULTS.md).
 
 ```
 src/tello_core/          every algorithm. Plain Python, no ROS.
-  link/                  TelloLink interface, SDK 2.0 UDP driver, state decoding
+  link/                  TelloLink interface, SDK 2.0 UDP driver, state decoding,
+                         H.264 decoding with PyAV
+  emulator/              a simulated Tello speaking SDK 2.0 over UDP, with H.264
   localisation/          QR detection, marker map, multi-marker PnP, VO, the EKF
   control/               PID, waypoint controller, failsafe machine, mission runner
   sim/                   the room, the ray caster, the dynamics, the lossy link
   eval/                  trajectory metrics, split by whether they need truth
-src/tello_msgs/          six message definitions
+src/tello_msgs/          seven message definitions
 src/tello_driver/        the one node that talks to hardware
 src/tello_localisation/  marker and fusion nodes
 src/tello_control/       controller and failsafe, in one process, deliberately
-src/tello_bringup/       launch files and all configuration
+src/tello_bringup/       launch files, all configuration and the launch tests
+docker/ros2/             the ROS 2 Humble image CI builds and tests in
 maps/                    marker_map.yaml, the survey everything rests on
 missions/                waypoint files
 scripts/                 one entry point per thing worth doing
 analysis/                figure generation
 results/                 committed outputs, every number in the docs
-tests/                   326 tests
+tests/                   344 tests, no ROS needed
 docs/                    the reasoning
 ```
 
@@ -269,6 +286,7 @@ docs/                    the reasoning
 | [docs/PID_TUNING.md](docs/PID_TUNING.md) | The gains, why each is what it is, how to retune on hardware |
 | [docs/LIMITATIONS.md](docs/LIMITATIONS.md) | Everything it cannot do |
 | [docs/ROS2.md](docs/ROS2.md) | The colcon build and the graph |
+| [docs/EMULATOR.md](docs/EMULATOR.md) | The Tello emulator, the H.264 path and the launch tests |
 | [STATUS.md](STATUS.md) | What is done, what is next |
 
 ## Licence

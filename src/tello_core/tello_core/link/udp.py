@@ -37,7 +37,7 @@ Video decoding is the part that cannot be done in the standard library. The
 stream is raw H.264 in UDP datagrams with no container, so it needs a decoder.
 This class takes one as a callable, so the transport does not import a codec;
 :class:`tello_core.link.video.H264Decoder` is the one this repository ships,
-FFmpeg's H.264 parser and decoder through PyAV, and it is tested against the H.264
+FFmpeg's H.264 parser and decoder through PyAV. It is tested against the H.264
 that the emulator in :mod:`tello_core.emulator` encodes with libx264.
 
 The emulator is also what this driver is exercised against end to end: the same

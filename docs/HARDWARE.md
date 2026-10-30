@@ -128,17 +128,48 @@ fails outright.
 **How to check.** Push the aircraft gently by hand in each of three directions
 and watch the reported velocity. Five minutes and the second thing to do.
 
+The same check covers three conventions the SDK document does not state either:
+the direction in which the reported `yaw` increases, the sign of `pitch` and the
+sense of the `rc` yaw channel. The driver assumes the reported yaw and the `rc`
+yaw channel share the stack's REP-103 sense (counter-clockwise seen from above)
+and flips only the lateral `rc` channel. Turn the aircraft by hand and watch
+`yaw`; then hover and send a small positive `rc` yaw. If either turns the other
+way, the fix is one sign in `link/state.py` or `link/udp.py`.
+
+**The emulator cannot catch any of these.** It was written to the same
+assumptions as the driver, so it encodes exactly what the driver decodes. A green
+emulator test says the two agree, not that either agrees with a Tello.
+
 ### 6. The UDP driver itself
 
 `tello_core/link/udp.py` speaks Tello SDK 2.0 from the published document. It has
 never sent a packet to an aircraft. It is exercised against a loopback socket in
-the test suite, which proves it parses and serialises correctly and proves nothing
-about whether a Tello likes it.
+the test suite and, end to end inside the ROS 2 graph, against the emulator in
+[EMULATOR.md](EMULATOR.md): three ports, the text protocol, state strings and a
+real H.264 stream. That proves the driver, the decoder and the graph work
+together and against the protocol as this repository understands it. It proves
+nothing about whether a Tello likes any of it.
 
-It also ships without a video decoder, deliberately. The Tello streams raw H.264
-in UDP datagrams with no container, so a decoder is needed; the options are PyAV
-or an `ffmpeg` subprocess and this repository does not assert a dependency it
-cannot test. `UdpLink` takes a decoder as an argument.
+Video is decoded with PyAV (FFmpeg's H.264 parser and decoder) in
+`link/video.py`. Two things about it need an aircraft:
+
+* **Framing.** By default a datagram shorter than 1460 bytes ends a frame and
+  flushes the parser, which saves a frame of latency. That framing is widely
+  described for the Tello and not documented by DJI. If decoded frames show
+  smearing or grey blocks on real video, construct `H264Decoder` with
+  `flush_on_short_datagram=False`; the parser alone depends on nothing but the
+  byte stream.
+* **What the aircraft does with its last `rc` command when the link drops.**
+  The simulator and the emulator hold it, so the aircraft flies on until its
+  fifteen-second timer lands it (see `docs/LIMITATIONS.md`). Check it over a soft
+  floor in a large room: command a slow forward `rc`, switch the laptop's Wi-Fi
+  off and watch whether the aircraft stops or carries on.
+* **Latency.** The driver stamps a frame when it is decoded, so whatever delay
+  the aircraft's camera and encoder add becomes an error in every marker fix,
+  proportional to speed. The emulator compensates its own render time and so
+  does not model this at all. Measure it before flying fast: film a stopwatch
+  with the Tello and with a reference camera, or swing the aircraft and compare
+  the estimated yaw with the reported one.
 
 ### 7. Flight dynamics
 
@@ -178,7 +209,9 @@ All of those cost detection range and none of them are modelled.
    axis signs, which are the two assumptions that would silently corrupt the
    estimator. Ten minutes.
 2. **Calibrate the camera.** The largest single error source. Fifteen minutes.
-3. **Get video decoding.** Nothing else can be checked until frames arrive.
+3. **Check video decoding and measure its latency.** The decoder ships and is
+   tested against the emulator; whether the aircraft's framing matches and how
+   old a frame is when it arrives, need the aircraft. See item 6.
 4. **Survey the room.** An afternoon and the thing that makes the numbers mean
    something.
 5. **Measure the mount offset.** Half an hour, against the survey.

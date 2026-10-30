@@ -3,7 +3,7 @@
 #
 # Results go to $TELLO_RESULTS (default /ws/results/ros2): the launch tests write
 # a summary per scenario, the emulator's simulated ground truth and its event
-# log there, and colcon writes the JUnit XML under it.
+# log there; colcon writes the JUnit XML under it.
 set -euo pipefail
 
 cd /ws

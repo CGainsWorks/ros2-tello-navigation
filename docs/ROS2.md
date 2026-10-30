@@ -9,8 +9,8 @@ If you have a ROS 2 distribution, this is how to build and run the graph. If you
 do not, `make demo` runs the same flight logic with the same configuration and you
 are not missing any of the substance.
 
-Tested against **Humble** on Ubuntu 22.04. Jazzy should work; nothing here uses an
-API that changed.
+Built and launch-tested against **Humble** on Ubuntu 22.04, in
+`docker/ros2/Dockerfile`, on every push. Jazzy is untested.
 
 ---
 
@@ -20,8 +20,16 @@ API that changed.
 # from the repository root, which is already a colcon workspace
 source /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
+pip install -r docker/ros2/requirements.txt   # PyAV and an OpenCV that suits numpy 1.x
 colcon build --symlink-install
 source install/setup.bash
+```
+
+Or build exactly what CI builds:
+
+```bash
+docker build -f docker/ros2/Dockerfile -t tello-ros2 .
+docker run --rm --network none tello-ros2          # the launch tests
 ```
 
 `--symlink-install` is worth it here: the Python packages are pure Python, so a
@@ -29,7 +37,19 @@ code change needs no rebuild.
 
 ---
 
-## Run, against the simulator
+## Run, against the emulator
+
+```bash
+ros2 launch tello_bringup emulator.launch.py auto_arm:=true
+```
+
+The Tello emulator (a simulated aircraft speaking SDK 2.0 on 127.0.0.1:8889, see
+[EMULATOR.md](EMULATOR.md)) plus `hardware.launch.py`, included unchanged with the
+driver pointed at loopback. Every packet between the graph and the aircraft is a
+real UDP datagram in the Tello's format and the video is real H.264. This is the
+graph the launch tests fly.
+
+## Run, against the in-process simulator
 
 ```bash
 ros2 launch tello_bringup sim.launch.py
@@ -39,10 +59,10 @@ That brings up four nodes:
 
 | Node | Package | Does |
 | --- | --- | --- |
-| `tello_driver` | `tello_driver` | Owns the link. Publishes `image`, `imu`, `battery`, `link_status`; subscribes `rc`. |
+| `tello_driver` | `tello_driver` | Owns the link. Publishes `tello_state`, `image`, `imu`, `battery`, `link_status`; subscribes `rc`; serves `takeoff`, `land`, `emergency`. |
 | `tello_marker_localisation` | `tello_localisation` | `image` in, `fix` out. |
-| `tello_fusion` | `tello_localisation` | `imu` and `fix` in, `nav_state` and the `map` to `base_link` transform out. |
-| `tello_mission` | `tello_control` | `nav_state` and `link_status` in, `rc` out, plus the failsafe. |
+| `tello_fusion` | `tello_localisation` | `tello_state` and `fix` in, `nav_state` and the `map` to `base_link` transform out. |
+| `tello_mission` | `tello_control` | `nav_state`, `link_status` and `tello_state` in, `rc` out, calls the driver's `takeoff`/`land`/`emergency`, plus the failsafe. |
 
 Then arm it:
 
@@ -71,8 +91,8 @@ ros2 launch tello_bringup hardware.launch.py
 ```
 
 which is the same graph with `link_type:=udp`. **Read `docs/HARDWARE.md` first.**
-The UDP driver has never exchanged a packet with a Tello and the node logs a
-warning saying so every time it starts.
+The UDP driver has never exchanged a packet with a Tello, only with the emulator,
+and the node logs a warning saying so every time it starts.
 
 ---
 
@@ -100,8 +120,8 @@ which is which.
                         └──┬────┬───┬──┘
           image (Image)    │    │   │  link_status (LinkStatus)
          ┌──────────────────┘    │   └──────────────────┐
-         │          imu (Imu)    │  battery             │
-         ▼                       ▼  (BatteryState)      │
+         │   tello_state         │                      │
+         ▼   (TelloState)        ▼                      │
 ┌─────────────────┐     ┌────────────────┐              │
 │ marker_node     │     │ fusion_node    │              │
 │                 ├────►│                │              │
@@ -125,7 +145,10 @@ one purpose: it supplies the prior that resolves the planar pose ambiguity for a
 single-marker view. It is optional. Without it the marker node rejects more
 single-marker fixes and publishes fewer.
 
-The six messages are in `src/tello_msgs/msg`. `MarkerFix` and `NavState` both
+The seven messages are in `src/tello_msgs/msg`. `TelloState` carries every field
+the state decoder produces; it replaced a `sensor_msgs/Imu` path that had nowhere
+to put the height or the body velocity and fed the filter zeros for both. `imu`
+and `battery` are still published for standard tools. `MarkerFix` and `NavState` both
 carry a real covariance, because everything downstream of them needs to know how
 much to believe them.
 
@@ -138,13 +161,16 @@ Set in `src/tello_bringup/config/nodes.yaml` and overridable at launch.
 | Node | Parameter | Default | Note |
 | --- | --- | --- | --- |
 | `tello_driver` | `link_type` | `sim` in `sim.launch.py` | `sim` or `udp`. |
+| | `tello_address` | `192.168.10.1` | `127.0.0.1` in `emulator.launch.py`. |
+| | `local_command_port` | 8889 | `0` against the emulator, which already holds 8889 on the same machine. |
+| | `image_encoding` | `bgr8` | `mono8` against the emulator, whose camera is monochrome. |
 | | `poll_rate` | 60 Hz | How often the driver drains the link. Above the video rate so a frame is never held. |
 | `marker_node` | `marker_map` | the shipped map | Required. The node refuses to start without it: defaulting to an empty map would mean flying with an estimator that silently never fixes. |
 | | `detect_every` | 1 | Detect on one frame in N. The first thing to raise on a machine that cannot keep up and it costs localisation rate directly. |
 | `fusion_node` | `fix_timeout` | 2.0 s | How long `localised` stays true without a fix. |
 | | `max_position_sigma` | 0.45 m | Above this the filter reports itself unlocalised regardless. |
 | `mission_node` | `mission` | required | |
-| | `auto_arm` | false | True takes off as soon as the first `nav_state` arrives. Convenient in simulation, a bad idea with an aircraft on the bench. |
+| | `auto_arm` | false | A launch argument. True takes off once localised with live telemetry. Convenient in simulation, a bad idea with an aircraft on the bench. It is deliberately absent from `nodes.yaml`: a node-specific entry there would override the launch argument. |
 | | `control_rate` | 20 Hz | |
 
 ---
@@ -153,15 +179,22 @@ Set in `src/tello_bringup/config/nodes.yaml` and overridable at launch.
 
 `tests/test_ros_packages.py` runs on every push with no ROS installed. It parses
 every `package.xml`, checks each names the package its directory does and declares
-the right build type, verifies every console script points at a module and a
-function that exist, confirms every node parses and defines `main`, checks each
-node extends `sys.path` before importing `tello_core` and checks every message
-file is listed in `CMakeLists.txt`.
+the right build type, that each node package has the `__init__.py` without which
+`find_packages()` installs nothing, that every console script points at a module
+and a function that exist, that every node parses and defines `main` and that every
+message file is listed in `CMakeLists.txt`.
 
-Those are the failures that otherwise surface after a two-minute colcon build on
-somebody else's machine.
+The `ROS 2 graph against the emulator` CI job then builds the workspace with
+colcon in `docker/ros2/Dockerfile` and runs the three launch tests in
+`src/tello_bringup/test/`: a waypoint mission, a link loss and a low battery,
+flown by the full graph against the emulator and asserted against its simulated
+ground truth. [EMULATOR.md](EMULATOR.md) lists what each asserts.
 
-What is **not** checked is behaviour: no test launches a graph and watches messages
-flow, because that needs a ROS distribution CI does not install. The node layer is
-thin by design and `docs/LIMITATIONS.md` says so plainly rather than leaving it
-implied.
+The first launches found six faults the static checks could not: node packages
+that installed no code, a mission node that never commanded a take-off or a
+landing, a fusion node feeding the filter zeros, an attribute that shadowed an
+rclpy internal, a logging call site rclpy refused because its severity changed
+and a launch argument overridden by the parameter file. All six are fixed and the
+first is now also a static check.
+
+What none of this checks is a Tello. See [HARDWARE.md](HARDWARE.md).

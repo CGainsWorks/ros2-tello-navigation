@@ -36,16 +36,23 @@ keeps the aircraft inside a box chosen to be empty; it does nothing about
 anything inside that box. A person walking through the test area is both an
 occlusion, which is handled and an obstacle, which is not.
 
-## The link-loss response costs up to fifteen seconds of drift
+## On link loss the aircraft may fly on for up to fifteen seconds
 
 On link loss the controller falls silent so the aircraft's own dead-man timer can
-land it, which is the right call and is argued in `docs/FAILSAFE.md`. The cost is
-that the aircraft hovers, drifting, until that timer fires.
+land it, which is argued in `docs/FAILSAFE.md`. Until that timer fires nothing on
+this side of the link can steer it.
 
-At the measured 5 cm/s of drift that is under a metre, which is acceptable in a
-4 x 3 m room with the geofence inset 0.35 m from the walls. In a larger space, or
-one with any air movement, it would not be. There is no way to shorten it from
-this side of the link.
+This section used to say the aircraft hovers meanwhile, drifting under a metre.
+It does not, in this repository's own models: the simulator and the emulator hold
+the last `rc` command through an outage. The committed offline `link_loss` case
+orbited the room for the whole outage; the emulator launch test, whose last
+command was a cruise leg, left the room by several metres (its summary reports
+the path flown). The geofence cannot help, because enforcing it needs the link.
+If a real Tello behaves the same, the response is only safe in a space large
+enough for fifteen seconds at cruise speed, or with a lower cruise speed. Which
+behaviour the aircraft has is a hardware check (`docs/HARDWARE.md`, item 6) and
+the obvious mitigation, commanding a hover as soon as telemetry starts to go
+stale and before declaring the link lost, is not built.
 
 ## The visual odometry has no scale of its own
 
@@ -111,21 +118,37 @@ not have: it is plain Python with numpy and OpenCV and the behaviour that matter
 is pinned by the test suite. Development happens on 3.9 and 3.11 and the suite
 passes on both.
 
-## The ROS 2 side is thin and largely untested
+## The ROS 2 side is thin and tested against an emulator, not an aircraft
 
 The nodes in `src/tello_localisation`, `src/tello_control` and `src/tello_driver`
 subscribe, convert, call into `tello_core` and publish. That is deliberate: it is
-what lets everything of substance be tested without a ROS installation and it is
-what makes the offline runner and the ROS graph exercise one implementation of the
-flight logic.
+what lets everything of substance be tested without a ROS installation.
 
-The consequence is that the node layer itself is checked structurally rather than
-behaviourally. `tests/test_ros_packages.py` parses every `package.xml`, every
-`setup.py` entry point and every message definition and verifies that each node
-module parses and defines `main`, without importing `rclpy`. What it does not do
-is launch a graph and watch messages flow, because that needs a ROS distribution
-that CI does not install. `docs/ROS2.md` has the colcon build for anyone who has
-one.
+Until the emulator existed the node layer was checked only structurally. The
+first launch showed what that missed: the node packages installed no code, the
+mission node never commanded a take-off, the fusion node fed the filter a zero
+body velocity and a launch argument was silently overridden by a parameter file.
+`docs/EMULATOR.md` describes the launch tests that now build the workspace with
+colcon and fly the graph in CI.
+
+What remains true:
+
+* **The ROS graph runs in real time and is not reproducible.** Scheduling sets
+  the step sizes, so its numbers vary from run to run. The reproducible numbers
+  come from the offline runner and the launch tests assert bounds rather than
+  compare with committed values.
+* **The ROS mission node mirrors `MissionRunner` rather than sharing it.** The
+  offline runner owns a link and a filter; the node gets both over topics. The
+  launch tests keep them honest; even so a change to one has to be made to the
+  other.
+* **The ROS graph has no visual odometry.** The offline runner fuses VO; the
+  graph fuses marker fixes with the state packet only.
+* **The emulated camera is slow.** The numpy ray caster delivers a handful of
+  frames per second on a CI runner, against the Tello's 30. Its render time
+  is compensated so real camera latency is not modelled. See `docs/EMULATOR.md`.
+* **The launch tests are simulated end to end.** Aircraft, room, camera and link
+  are the emulator's. They show that the graph, the driver and the decoder work
+  together; they say nothing about a Tello.
 
 ## Things deliberately not built
 

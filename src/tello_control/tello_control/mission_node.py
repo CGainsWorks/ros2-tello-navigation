@@ -299,7 +299,7 @@ class MissionNode(Node):
         command = self._command_for(decision.state, now, dt)
 
         if decision.state is FlightState.TAKEOFF and not inputs.airborne:
-            # Once, and again only if the aircraft has evidently not heard it. A
+            # Once; again only if the aircraft has evidently not heard it. A
             # second takeoff during the climb is answered with an error.
             self._call("takeoff", now, every=3.0)
         if decision.command_land:

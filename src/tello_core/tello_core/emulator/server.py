@@ -82,7 +82,7 @@ MOVE_COMMANDS = ("forward", "back", "left", "right", "up", "down")
 
 @dataclass(frozen=True)
 class EmulatorFaults:
-    """What goes wrong, and when. Times are seconds after the first take-off."""
+    """What goes wrong and when. Times are seconds after the first take-off."""
 
     outages: Tuple[Tuple[float, float], ...] = ()
     """``(start, duration)``. Nothing gets through in either direction."""
@@ -666,7 +666,7 @@ class TelloEmulator:
 
         Rendering takes the emulator tens of milliseconds of its own and on a
         loaded machine a good deal more. That delay is an artefact of a numpy
-        ray caster, not a property of a camera, and left alone it showed up as
+        ray caster, not a property of a camera. Left alone it showed up as
         a marker fix stamped on arrival but describing where the aircraft had
         been: at cruise speed the launch tests saw fixes 0.3 m behind the truth
         and the failsafe holding for lost localisation. So each frame is

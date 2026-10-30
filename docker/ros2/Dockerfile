@@ -40,7 +40,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # The whole graph and the emulator run in this one container, so discovery
 # stays on loopback. Without it a test run on a machine with other ROS
 # containers on the same Docker network receives their /rc and /nav_state, of
-# different message definitions, and every node logs deserialisation errors.
+# different message definitions and every node logs deserialisation errors.
 # That happened during development and at first looked like a DDS transport
 # limit on large images; with discovery isolated the errors went away.
 ENV ROS_LOCALHOST_ONLY=1

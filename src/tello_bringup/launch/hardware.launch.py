@@ -7,7 +7,7 @@ READ ``docs/HARDWARE.md`` FIRST.
 
 The UDP driver in this repository has never exchanged a packet with a Tello. It is
 written from DJI's published SDK 2.0 document and exercised against a loopback
-socket and against the emulator, and the driver node logs a warning saying so
+socket and against the emulator. The driver node logs a warning saying so
 every time it starts. Several constants it depends on, the camera intrinsics, the
 mount offset, the rc channel scaling and the units of the reported acceleration,
 are unverified and ``docs/HARDWARE.md`` lists them with the ten-minute checks
