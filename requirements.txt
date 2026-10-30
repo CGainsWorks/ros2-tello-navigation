@@ -16,7 +16,14 @@ pyyaml>=5.4
 # Lucas-Kanade tracker all come from OpenCV. `opencv-python-headless` rather
 # than `opencv-python` because nothing here opens a GUI window and the headless
 # wheel does not drag in a GTK stack on a CI runner.
-opencv-python-headless>=4.7
+#
+# Capped below 5. With OpenCV 5.0 the weekly reproduction of the reference
+# flight (simulated) failed: localisation availability fell from 0.957 to 0.781
+# and the 95th percentile position error rose from 0.328 m to 0.653 m, while
+# 4.11 reproduces the committed numbers exactly and 4.14 stays within
+# tolerance. Lifting the cap means re-deriving the results and explaining the
+# change, not just bumping a number.
+opencv-python-headless>=4.7,<5
 
 # H.264. The Tello streams raw H.264 on UDP 11111 and PyAV is FFmpeg's
 # libavcodec from Python: the driver decodes with it and the emulator encodes
